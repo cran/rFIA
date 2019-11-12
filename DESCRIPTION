@@ -1,7 +1,7 @@
 Package: rFIA
 Type: Package
 Title: Space-Time Estimation of Forest Variables using the FIA Database
-Version: 0.1.0
+Version: 0.1.1
 Author: Hunter Stanke [aut, cre],
   Andrew Finley [aut]
 Maintainer: Hunter Stanke <stankehu@msu.edu>
@@ -15,6 +15,6 @@ Imports: dplyr, stringr, sp, sf, tidyr (>= 1.0.0), parallel, ggplot2,
 Suggests: knitr, rmarkdown
 RoxygenNote: 6.1.1
 NeedsCompilation: no
-Packaged: 2019-10-22 12:08:37 UTC; hunter
+Packaged: 2019-11-12 16:51:39 UTC; hunter
 Repository: CRAN
-Date/Publication: 2019-10-28 13:30:02 UTC
+Date/Publication: 2019-11-12 17:30:07 UTC

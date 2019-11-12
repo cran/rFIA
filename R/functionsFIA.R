@@ -1,7 +1,7 @@
 
 #### A Start up Message ------------
 .onAttach <- function(libname, pkgname){
-  packageStartupMessage('Download FIA Data Here: https://apps.fs.usda.gov/fia/datamart/datamart.html')
+  #packageStartupMessage('Download FIA Data Here: https://apps.fs.usda.gov/fia/datamart/datamart.html')
 }
 
 
@@ -74,6 +74,7 @@ divIndex <- function(SPCD, TPA, index) {
   }
   return(value)
 }
+
 
 #' @export
 makeClasses <- function(x, interval = NULL, lower = NULL, upper = NULL, brks = NULL, numLabs = FALSE){
@@ -558,34 +559,36 @@ Did you accidentally include the state abbreviation in front of the table name? 
       states <- ''
     }
 
-    # Convert all to url paths
-    urls <- c()
-    tblNames <- c()
 
-    for (i in 1:length(states)){
-      if (i){
-        tblNames[i] <- paste0(states[1], tables[1], '.csv')
-        urls[i] <- paste0('https://apps.fs.usda.gov/fia/datamart/CSV/', tblNames)
-      }
-      for (n in 2:length(tables)){
-        tblNames <- c(tblNames, paste0(states[i], tables[n], '.csv'))
-        urls <- c(urls, paste0('https://apps.fs.usda.gov/fia/datamart/CSV/', tblNames[n]))
-      }
-    }
+    tblNames <- sapply(states, FUN = function(x, y){paste0(x,y,'.zip')}, y = tables)
+    tblNames <- c(tblNames)
+    urls <- paste0('https://apps.fs.usda.gov/fia/datamart/CSV/', tblNames)
+
 
     inTables = list()
     for (n in 1:length(urls)){
 
+      ## If dir is not specified, hold in a temporary directory
+      if (is.null(dir)){tempDir <- tempdir()}
+
+      newName <- paste0(str_sub(tblNames[n], 1, -5), '.csv')
+
+      ## Download the zip to a temporary file
+      temp <- tempfile()
+      download.file(urls[n], temp)
+
       # Write the data out the directory they've chosen
       if(is.null(dir)){
-        temp <- tempfile()
-        download.file(urls[n], temp)
-        file <- fread(temp, showProgress = FALSE, logical01 = FALSE, integer64 = 'double', nThread = nCores)
+        unzip(temp, exdir = tempDir)
+        file <- fread(paste0(tempDir, '/', newName), showProgress = FALSE, logical01 = FALSE, integer64 = 'double', nThread = nCores)
         unlink(temp)
       } else {
-        download.file(urls[n], paste0(dir, tblNames[n]))
-        file <- fread(paste0(dir, tblNames[n]), showProgress = FALSE, logical01 = FALSE, integer64 = 'double', nThread = nCores)
+        #download.file(urls[n], paste0(dir, tblNames[n]))
+        unzip(temp, exdir = str_sub(dir, 1, -2))
+        file <- fread(paste0(dir, newName), showProgress = FALSE, logical01 = FALSE, integer64 = 'double', nThread = nCores)
       }
+
+      unlink(temp)
 
       # We don't want data.table formats
       file <- as.data.frame(file)
@@ -648,7 +651,7 @@ Did you accidentally include the state abbreviation in front of the table name? 
       if (is.null(dir)){
         unzip(temp, exdir = tempDir)
       } else {
-        unzip(temp, exdir = dir)
+        unzip(temp, exdir = str_sub(dir, 1, -2))
       }
       unlink(temp)
     }
@@ -1144,7 +1147,7 @@ standStruct <- function(db,
       mutate_if(is.factor,
                 as.character)
     # Add shapefile names to grpBy
-    grpBy = c(names(polys)[1:ncol(polys)-1], 'polyID', grpBy)
+    grpBy = c(names(polys)[str_detect(names(polys), 'geometry') == FALSE], 'polyID', grpBy)
     ## Make plot data spatial, projected same as polygon layer
     pltSF <- select(db$PLOT, c('PLT_CN', 'LON', 'LAT'))
     coordinates(pltSF) <- ~LON+LAT
@@ -1343,6 +1346,7 @@ standStruct <- function(db,
           filter(!is.na(LAT) & !is.na(LON)) %>%
           st_as_sf(coords = c('LON', 'LAT'),
                    crs = '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
+
       }
 
       ### -- TOTALS & MEAN TPA -- Total number of trees in region & Mean TPA for the region
@@ -1480,8 +1484,15 @@ standStruct <- function(db,
     pb$tick()
   }
   sOut <- do.call(rbind, out)
+  ## For spatial plots
+  if (returnSpatial & byPlot) grpBy <- grpBy[grpBy %in% c('LAT', 'LON') == FALSE]
   sOut <- drop_na(sOut, grpBy) %>%
-    arrange(YEAR)
+    arrange(YEAR)%>%
+    as_tibble()
+
+  ## Above converts to tibble
+  if (returnSpatial) sOut <- st_sf(sOut)
+
   # ## remove any duplicates in byPlot (artifact of END_INYR loop)
   if (byPlot) sOut <- unique(sOut)
 
@@ -1564,7 +1575,7 @@ diversity <- function(db,
       mutate_if(is.factor,
                 as.character)
     # Add shapefile names to grpBy
-    grpBy = c(names(polys)[1:ncol(polys)-1], 'polyID', grpBy)
+    grpBy = c(names(polys)[str_detect(names(polys), 'geometry') == FALSE], 'polyID', grpBy)
     ## Make plot data spatial, projected same as polygon layer
     pltSF <- select(db$PLOT, c('PLT_CN', 'LON', 'LAT'))
     coordinates(pltSF) <- ~LON+LAT
@@ -1793,6 +1804,7 @@ diversity <- function(db,
           filter(!is.na(LAT) & !is.na(LON)) %>%
           st_as_sf(coords = c('LON', 'LAT'),
                    crs = '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
+
       }
 
       ### -- TOTALS & MEAN TPA -- Total number of trees in region & Mean TPA for the region
@@ -1901,8 +1913,13 @@ diversity <- function(db,
     pb$tick()
   }
   dOut <- do.call(rbind, out)
+  ## For spatial plots
+  if (returnSpatial & byPlot) grpBy <- grpBy[grpBy %in% c('LAT', 'LON') == FALSE]
   dOut <- drop_na(dOut, grpBy) %>%
-    arrange(YEAR)
+    arrange(YEAR)%>%
+    as_tibble()
+  ## Above converts to tibble
+  if (returnSpatial) dOut <- st_sf(dOut)
   # ## remove any duplicates in byPlot (artifact of END_INYR loop)
   if (byPlot) dOut <- unique(dOut)
   return(dOut)
@@ -1988,7 +2005,7 @@ tpa <- function(db,
       mutate_if(is.factor,
                 as.character)
     # Add shapefile names to grpBy
-    grpBy = c(names(polys)[1:ncol(polys)-1], 'polyID', grpBy)
+    grpBy = c(names(polys)[str_detect(names(polys), 'geometry') == FALSE], 'polyID', grpBy)
     ## Make plot data spatial, projected same as polygon layer
     pltSF <- select(db$PLOT, c('PLT_CN', 'LON', 'LAT'))
     coordinates(pltSF) <- ~LON+LAT
@@ -2232,6 +2249,7 @@ tpa <- function(db,
           filter(!is.na(LAT) & !is.na(LON)) %>%
           st_as_sf(coords = c('LON', 'LAT'),
                    crs = '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
+
       }
 
       ### -- TOTALS & MEAN TPA -- Total number of trees in region & Mean TPA for the region
@@ -2340,8 +2358,13 @@ tpa <- function(db,
   }
 
   tOut <- do.call(rbind, out)
+  ## For spatial plots
+  if (returnSpatial & byPlot) grpBy <- grpBy[grpBy %in% c('LAT', 'LON') == FALSE]
   tOut <- drop_na(tOut, grpBy) %>%
-    arrange(YEAR)
+    arrange(YEAR) %>%
+    as_tibble()
+  ## Above converts to tibble
+  if (returnSpatial) tOut <- st_sf(tOut)
   # ## remove any duplicates in byPlot (artifact of END_INYR loop)
   if (byPlot) tOut <- unique(tOut)
   return(tOut)
@@ -2427,7 +2450,7 @@ growMort <- function(db,
   if(any(unique(db$PLOT$STATECD) %in% c(69, 72, 78, 15, 02))){
     vState <- unique(db$PLOT$STATECD[db$PLOT$STATECD %in% c(69, 72, 78, 15, 02)])
     fancyName <- unique(intData$EVAL_GRP$STATE[intData$EVAL_GRP$STATECD %in% vState])
-    stop(paste('Growth & Mortality Estimates unavailable for: ', as.character(fancyName), sep = ''))
+    stop(paste('Growth & Mortality Estimates unavailable for: ', paste(as.character(fancyName), collapse = ', '), sep = ''))
   }
 
   # Save original grpByfor pretty return with spatial objects
@@ -2442,7 +2465,7 @@ growMort <- function(db,
       mutate_if(is.factor,
                 as.character)
     # Add shapefile names to grpBy
-    grpBy = c(names(polys)[1:ncol(polys)-1], 'polyID', grpBy)
+    grpBy = c(names(polys)[str_detect(names(polys), 'geometry') == FALSE], 'polyID', grpBy)
     ## Make plot data spatial, projected same as polygon layer
     pltSF <- select(db$PLOT, c('PLT_CN', 'LON', 'LAT'))
     coordinates(pltSF) <- ~LON+LAT
@@ -2776,7 +2799,8 @@ growMort <- function(db,
           filter(!is.na(LAT) & !is.na(LON)) %>%
           st_as_sf(coords = c('LON', 'LAT'),
                    crs = '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
-      }
+
+        }
 
     } else {
       # Unique combinations of specified grouping variables. Simply listing the grouping variables in estimation code below does not produce valid estimates. Have to
@@ -2879,8 +2903,13 @@ growMort <- function(db,
     pb$tick()
   }
   tOut <- do.call(rbind, out)
+  ## For spatial plots
+  if (returnSpatial & byPlot) grpBy <- grpBy[grpBy %in% c('LAT', 'LON') == FALSE]
   tOut <- drop_na(tOut, grpBy) %>%
-    arrange(YEAR)
+    arrange(YEAR)%>%
+    as_tibble()
+  ## Above converts to tibble
+  if (returnSpatial) tOut <- st_sf(tOut)
   # ## remove any duplicates in byPlot (artifact of END_INYR loop)
   if (byPlot) tOut <- unique(tOut)
   return(tOut)
@@ -2980,7 +3009,7 @@ vitalRates <- function(db,
       mutate_if(is.factor,
                 as.character)
     # Add shapefile names to grpBy
-    grpBy = c(names(polys)[1:ncol(polys)-1], 'polyID', grpBy)
+    grpBy = c(names(polys)[str_detect(names(polys), 'geometry') == FALSE], 'polyID', grpBy)
     ## Make plot data spatial, projected same as polygon layer
     pltSF <- select(db$PLOT, c('PLT_CN', 'LON', 'LAT'))
     coordinates(pltSF) <- ~LON+LAT
@@ -3339,6 +3368,7 @@ vitalRates <- function(db,
           filter(!is.na(LAT) & !is.na(LON)) %>%
           st_as_sf(coords = c('LON', 'LAT'),
                    crs = '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
+
       }
 
       ### -- TOTALS & MEAN TPA -- Total number of trees in region & Mean TPA for the region
@@ -3446,8 +3476,13 @@ vitalRates <- function(db,
     pb$tick()
   }
   tOut <- do.call(rbind, out)
+  ## For spatial plots
+  if (returnSpatial & byPlot) grpBy <- grpBy[grpBy %in% c('LAT', 'LON') == FALSE]
   tOut <- drop_na(tOut, grpBy) %>%
-    arrange(YEAR)
+    arrange(YEAR)%>%
+    as_tibble()
+  ## Above converts to tibble
+  if (returnSpatial) tOut <- st_sf(tOut)
   # ## remove any duplicates in byPlot (artifact of END_INYR loop)
   if (byPlot) tOut <- unique(tOut)
   return(tOut)
@@ -3530,7 +3565,7 @@ biomass <- function(db,
       mutate_if(is.factor,
                 as.character)
     # Add shapefile names to grpBy
-    grpBy = c(names(polys)[1:ncol(polys)-1], 'polyID', grpBy)
+    grpBy = c(names(polys)[str_detect(names(polys), 'geometry') == FALSE], 'polyID', grpBy)
     ## Make plot data spatial, projected same as polygon layer
     pltSF <- select(db$PLOT, c('PLT_CN', 'LON', 'LAT'))
     coordinates(pltSF) <- ~LON+LAT
@@ -3772,6 +3807,7 @@ biomass <- function(db,
           filter(!is.na(LAT) & !is.na(LON)) %>%
           st_as_sf(coords = c('LON', 'LAT'),
                    crs = '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
+
       }
 
       ### -- TOTALS & MEAN TPA -- Total number of trees in region & Mean TPA for the region
@@ -3875,8 +3911,13 @@ biomass <- function(db,
     pb$tick()
   }
   bOut <- do.call(rbind, out)
+  ## For spatial plots
+  if (returnSpatial & byPlot) grpBy <- grpBy[grpBy %in% c('LAT', 'LON') == FALSE]
   bOut <- drop_na(bOut, grpBy) %>%
-    arrange(YEAR)
+    arrange(YEAR) %>%
+    as_tibble()
+  ## Above converts to tibble
+  if (returnSpatial) bOut <- st_sf(bOut)
   # ## remove any duplicates in byPlot (artifact of END_INYR loop)
   if (byPlot) bOut <- unique(bOut)
   return(bOut)
@@ -3957,7 +3998,7 @@ dwm <- function(db,
       mutate_if(is.factor,
                 as.character)
     # Add shapefile names to grpBy
-    grpBy = c(names(polys)[1:ncol(polys)-1], 'polyID', grpBy)
+    grpBy = c(names(polys)[str_detect(names(polys), 'geometry') == FALSE], 'polyID', grpBy)
     ## Make plot data spatial, projected same as polygon layer
     pltSF <- select(db$PLOT, c('PLT_CN', 'LON', 'LAT'))
     coordinates(pltSF) <- ~LON+LAT
@@ -4177,6 +4218,7 @@ dwm <- function(db,
           filter(!is.na(LAT) & !is.na(LON)) %>%
           st_as_sf(coords = c('LON', 'LAT'),
                    crs = '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
+
       }
 
       ### -- TOTALS & MEAN TPA -- Total number of trees in region & Mean TPA for the region
@@ -4353,8 +4395,13 @@ dwm <- function(db,
     pb$tick()
   }
   cOut <- do.call(rbind, out)
+  ## For spatial plots
+  if (returnSpatial & byPlot) grpBy <- grpBy[grpBy %in% c('LAT', 'LON') == FALSE]
   cOut <- drop_na(cOut, grpBy) %>%
-    arrange(YEAR)
+    arrange(YEAR)%>%
+    as_tibble()
+  ## Above converts to tibble
+  if (returnSpatial) cOut <- st_sf(cOut)
   # ## remove any duplicates in byPlot (artifact of END_INYR loop)
   if (byPlot) {
     cOut <- unique(cOut)
@@ -4438,7 +4485,7 @@ invasive <- function(db,
       mutate_if(is.factor,
                 as.character)
     # Add shapefile names to grpBy
-    grpBy = c(names(polys)[1:ncol(polys)-1], 'polyID', grpBy)
+    grpBy = c(names(polys)[str_detect(names(polys), 'geometry') == FALSE], 'polyID', grpBy)
     ## Make plot data spatial, projected same as polygon layer
     pltSF <- select(db$PLOT, c('PLT_CN', 'LON', 'LAT'))
     coordinates(pltSF) <- ~LON+LAT
@@ -4631,6 +4678,7 @@ invasive <- function(db,
           filter(!is.na(LAT) & !is.na(LON)) %>%
           st_as_sf(coords = c('LON', 'LAT'),
                    crs = '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
+
       }
     } else {
       ## Duplicate and rbind so we have a unique poly key for the entire set of non-spatial combos
@@ -4723,8 +4771,13 @@ invasive <- function(db,
     pb$tick()
   }
   invOut <- do.call(rbind, out)
+  ## For spatial plots
+  if (returnSpatial & byPlot) grpBy <- grpBy[grpBy %in% c('LAT', 'LON') == FALSE]
   invOut <- drop_na(invOut, grpBy) %>%
-    arrange(YEAR)
+    arrange(YEAR)%>%
+    as_tibble()
+  ## Above converts to tibble
+  if (returnSpatial) invOut <- st_sf(invOut)
   # ## remove any duplicates in byPlot (artifact of END_INYR loop)
   if (byPlot) invOut <- unique(invOut)
   return(invOut)
@@ -4810,7 +4863,7 @@ area <- function(db,
       mutate_if(is.factor,
                 as.character)
     # Add shapefile names to grpBy
-    grpBy = c(names(polys)[1:ncol(polys)-1], 'polyID', grpBy)
+    grpBy = c(names(polys)[str_detect(names(polys), 'geometry') == FALSE], 'polyID', grpBy)
     ## Make plot data spatial, projected same as polygon layer
     pltSF <- select(db$PLOT, c('PLT_CN', 'LON', 'LAT'))
     coordinates(pltSF) <- ~LON+LAT
@@ -5049,6 +5102,14 @@ area <- function(db,
         summarize(area = sum(CONDPROP_UNADJ * aDI, na.rm = TRUE),
                   plotIn = ifelse(sum(aDI >  0, na.rm = TRUE), 1,0))
 
+      if (returnSpatial){
+        invOut <- invOut %>%
+          filter(!is.na(LAT) & !is.na(LON)) %>%
+          st_as_sf(coords = c('LON', 'LAT'),
+                   crs = '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
+
+      }
+
       ### -- TOTALS & MEAN
     } else {
       ## Duplicate and rbind so we have a unique poly key for the entire set of non-spatial combos
@@ -5136,8 +5197,14 @@ area <- function(db,
   }
 
   aOut <- do.call(rbind, out)
+  ## For spatial plots
+  if (returnSpatial & byPlot) grpBy <- grpBy[grpBy %in% c('LAT', 'LON') == FALSE]
+  ## Remove NA values from groups
   aOut <- drop_na(aOut, grpBy) %>%
-    arrange(YEAR)
+    arrange(YEAR)%>%
+    as_tibble()
+  ## Above converts to tibble
+  if (returnSpatial) aOut <- st_sf(aOut)
   # ## remove any duplicates in byPlot (artifact of END_INYR loop)
   if (byPlot) aOut <- unique(aOut)
   return(aOut)
