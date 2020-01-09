@@ -1,26 +1,30 @@
-\name{invasive}
-\alias{invasive}
+\name{seedling}
+\alias{seedling}
 
-\title{Estimate invasive species coverage from FIADB
-}
+\title{Estimate seedling abundance per acre from FIADB}
 
 \description{
-Produces estimates of areal coverage of invasive species from the Forest Inventory and Analysis Database. Estimates can be produced for regions defined within the FIA Database (e.g. counties), at the plot level, or within user-defined areal units. All estimates are returned by species although can be grouped by other variables defined in the FIADB. If multiple reporting years (EVALIDs) are included in the data, estimates will be output as a time series. If multiple states are represented by the data, estimates will be output for the full region (all area combined), unless specified otherwise (e.g. \code{grpBy = STATECD}). Easy options to implement parallel processing.}
+Produces seedling (< 1 inch DBH) tree per acre (TPA) estimates from FIA data, along with population totals. Estimates can be produced for regions defined within the FIA Database (e.g. counties), at the plot level, or within user-defined areal units. Options to group estimates by species and other variables defined in the FIADB. If multiple reporting years (EVALIDs) are included in the data, estimates will be output as a time series. If multiple states are represented by the data, estimates will be output for the full region (all area combined), unless specified otherwise (e.g. \code{grpBy = STATECD}). Easy options to implement parallel processing.
+}
+
 
 \usage{
-invasive(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE, landType = "forest",
-         method = 'TI', lambda = .5, areaDomain = NULL, byPlot = FALSE,
-         totals = FALSE, nCores = 1)
+seedling(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
+         bySpecies = FALSE, landType = "forest", method = 'TI',
+         lambda = .5, treeDomain = NULL, areaDomain = NULL,
+         totals = FALSE, byPlot = FALSE, nCores = 1)
 }
 
 \arguments{
-  \item{db}{\code{FIA.Database} object produced from \code{\link{readFIA}}. Function requires that PLOT, INVASIVE_SUBPLOT_SPP, COND, POP_PLOT_STRATUM_ASSGN, POP_ESTN_UNIT, POP_EVAL, POP_STRATUM, POP_EVAL_TYP, POP_EVAL_GRP tables exist in FIA.Database object.}
+  \item{db}{\code{FIA.Database} object produced from \code{\link{readFIA}}. Function requires that PLOT, TREE, COND, POP_PLOT_STRATUM_ASSGN, POP_ESTN_UNIT, POP_EVAL, POP_STRATUM, POP_EVAL_TYP, POP_EVAL_GRP tables exist in FIA.Database object.}
 
- \item{grpBy}{variables from PLOT, COND, or TREE tables to group estimates by (NOT quoted). Multiple grouping variables should be combined with \code{c()}, and grouping will occur heirarchically. For example, to produce seperate estimates for each ownership group within ecoregion subsections, specify \code{c(ECOSUBCD, OWNGRPCD)}.}
+\item{grpBy}{variables from PLOT, COND, or SEEDLING tables to group estimates by (NOT quoted). Multiple grouping variables should be combined with \code{c()}, and grouping will occur heirarchically. For example, to produce seperate estimates for each ownership group within ecoregion subsections, specify \code{c(ECOSUBCD, OWNGRPCD)}.}
 
   \item{polys}{\code{sp} or \code{sf} Polygon/MultiPolgyon object; Areal units to bin data for estimation. Seperate estimates will be produces for region encompassed by each areal unit.}
 
   \item{returnSpatial}{logical; if TRUE, return sf spatial object (polys must also be specified).}
+
+  \item{bySpecies}{logical; if TRUE, returns estimates grouped by species.}
 
   \item{landType}{character ('forest' or 'timber'); Type of land which estimates will be produced for. Timberland is a subset of forestland (default) which has high site potential and non-reserve status (see details).}
 
@@ -28,19 +32,20 @@ invasive(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE, landType = "fore
 
   \item{lambda}{numeric (0,1); if \code{method == 'EMA'}, the decay parameter used to define weighting scheme for annual panels. Low values place higher weight on more recent panels, and vice versa. Specify a vector of values to compute estimates using mulitple wieghting schemes, and use \code{plotFIA} with \code{grp} set to \code{lambda} to produce moving average ribbon plots.}
 
+  \item{treeDomain}{logical predicates defined in terms of the variables in PLOT, SEEDLING, and/or COND tables. Used to define the type of trees for which estimates will be produced (e.g. white pine: \code{SPCD == 129}). Multiple conditions are combined with \code{&} (and) or \code{|} (or). Only trees where the condition evaluates to TRUE are used in producing estimates. Should NOT be quoted.}
+
   \item{areaDomain}{logical predicates defined in terms of the variables in PLOT and/or COND tables. Used to define the area for which estimates will be produced (e.g. within 1 mile of improved road: \code{RDDISTCD \%in\% c(1:6)}, Hard maple/basswood forest type: \code{FORTYPCD == 805)}. Multiple conditions are combined with \code{&} (and) or \code{|} (or). Only plots within areas where the condition evaluates to TRUE are used in producing estimates. Should NOT be quoted.}
 
-  \item{byPlot}{logical; if TRUE, returns estimates for individual plot locations (population totals not returned).}
+  \item{totals}{logical; if TRUE, return population estimates (e.g. total area, total trees) along with ratio estimates (e.g. mean trees per acre).}
 
-  \item{totals}{logical; if TRUE, returns population estimates in addition to \% coverage.}
+  \item{byPlot}{logical; if TRUE, returns estimates for individual plot locations (population totals not returned).}
 
   \item{nCores}{numeric; number of cores to use for parallel implementation. Check available cores using \code{\link{detectCores}}. Default = 1, serial processing.}
 }
 
-\details{
-Estimation of attributes follows the procedures documented in Bechtold and Patterson (2005). Specifically, percent areal coverage is computed using a sample-based ratio-of-means estimator of total invasive coverage area / total land area within the domain of interest. Estimates of areal coverage of individual invasive species should NOT be summed to produce estimates of areal coverage by ALL invasive species, as areal coverage by species is not mutually exclusive (multiple species my occur in the same area). Current FIA data collection protocols do not allow for the unbiased estimation of areal coverage by all invasive species.
 
-Users may specify alternatives to the 'Temporally Indifferent' method for panel combination using the \code{method} argument. Estimators are currently implemented for the temporally indifferent (TI) method (default, used by EVALIDator), simple moving average (SMA), exponential moving average (EMA), and annual estimation (no panel combination). Users may modify the temporal weighting scheme employed by the exponential moving average using the \code{yrs} argument. See Chapter 5 of Bechtold & Patterson (2005) for more details.
+\details{
+Estimation of attributes follows the procedures documented in Bechtold and Patterson (2005). Specifically, TPA is computed using a sample-based ratio-of-means estimator of total seedlings / total land area within the domain of interest. Percentages of live TPA in the domain of interest are represented as the total number of trees of a particular type (e.g., white pine) / total number of trees (live, all species) within the region. The total populations used to compute these percentages will not change by changing treeType, but will vary if the user specifies an areaDomain or treeDomain.
 
 Stratified random sampling techniques are most often employed to compute estimates in recent inventories, although double sampling and simple random sampling may be employed for early inventories. Estimates are adjusted for non-response bias by assuming attributes of non-response plot locations to be equal to the mean of other plots included within thier respective stratum or population.
 
@@ -52,17 +57,13 @@ Easy, efficient parallelization is implemented with the \code{\link{parallel}} p
 \note{All sampling error estimates are returned as percentages, and represent ~68\% confidence (1 standard deviation). To compute sampling error percent with 95\% confidence, multiply by 1.96.}
 
 \value{
-Dataframe or SF object (if \code{returnSpatial = TRUE}). If \code{byPlot = TRUE}, values of areal coverage are returned for each plot (sq. ft.). All variables with names ending in \code{SE}, represent the estimate of sampling error (\%) of the variable.
+Dataframe or SF object (if \code{returnSpatial = TRUE}). If \code{byPlot = TRUE}, values are returned for each plot. All variables with names ending in \code{SE}, represent the estimate of sampling error (\%) of the variable. All variables with names ending in \code{TOTAL} represent the population total of the variable.
 
 \itemize{
       \item{\strong{YEAR}: reporting year associated with estimates}
-      \item{\strong{SYMBOL}: unique species ID from NRCS Plant Reference Guide}
-      \item{\strong{SCIENTIFIC_NAME}: scientific name of the species}
-      \item{\strong{COMMON_NAME}: common name of the species}
-      \item{\strong{COVER_PCT}: estimate of percent areal coverage of the species }
-      \item{\strong{COVER_AREA}: estimate of areal coverage of the species (acres) }
-      \item{\strong{AREA}: estimate of total land area (acres) }
-      \item{\strong{nPlots_INV}: number of non-zero plots used to compute invasive coverage estimates}
+      \item{\strong{TPA}: estimate of mean trees per acre}
+      \item{\strong{TPA_PERC}: estimate of mean proportion of live trees falling within the domain of interest, with respect to trees per acre}
+      \item{\strong{nPlots_SEEDLING}: number of non-zero plots used to compute tpa estimates}
       \item{\strong{nPlots_AREA}: number of non-zero plots used to compute land area estimates}
       }
 }
@@ -77,12 +78,13 @@ FIA Database User Guide: \url{https://www.fia.fs.fed.us/library/database-documen
 Bechtold, W.A.; Patterson, P.L., eds. 2005. The Enhanced Forest Inventory and Analysis Program - National Sampling Design and Estimation Procedures. Gen. Tech. Rep. SRS - 80. Asheville, NC: U.S. Department of Agriculture, Forest Service, Southern Research Station. 85 p. \url{https://www.srs.fs.usda.gov/pubs/gtr/gtr_srs080/gtr_srs080.pdf}
 }
 
+%% ~Make other sections like Warning with \section{Warning }{....} ~
+
 \seealso{
-\code{\link{dwm}}, \code{\link{tpa}}, \code{\link{clipFIA}}
+\code{\link{tpa}}, \code{\link{growMort}}, \code{\link{biomass}}
 }
 
 \examples{
-
 ## Load data from the rFIA package
 data(fiaRI)
 data(countiesRI)
@@ -90,33 +92,41 @@ data(countiesRI)
 ## Most recents subset
 fiaRI_mr <- clipFIA(fiaRI)
 
-## Most recent estimates on forest land
-invasive(db = fiaRI_mr,
-    landType = 'forest')
 
-## Same as above, but implemented in parallel (much quicker)
-parallel::detectCores(logical = FALSE) # 4 cores available, we will take 2
-invasive(db = fiaRI_mr,
-         landType = 'forest',
-         nCores = 2)
-
+## Most recent estimates on timber land by species
+seedling(db = fiaRI_mr,
+    landType = 'timber')
 \donttest{
+
+## Estimates for white pine on forested mesic sites (all available inventories)
+seedling(fiaRI_mr,
+    treeDomain = SPCD == 129, # Species code for white pine
+    areaDomain = PHYSCLCD \%in\% 21:29) # Mesic Physiographic classes
+
 ## Most recent estimates grouped by stand age on forest land
 # Make a categorical variable which represents stand age (grouped by 10 yr intervals)
 fiaRI_mr$COND$STAND_AGE <- makeClasses(fiaRI_mr$COND$STDAGE, interval = 10)
-invasive(db = fiaRI_mr,
-         grpBy = STAND_AGE)
+seedling(db = fiaRI_mr,
+    grpBy = STAND_AGE)
 
-## Estimates on forested mesic sites (all available inventories)
-invasive(fiaRI,
-         areaDomain = PHYSCLCD \%in\% 21:29) # Mesic Physiographic classes
+## Most recent estimates for live stems on forest land by species
+seedling(db = fiaRI_mr,
+    landType = 'forest',
+    bySpecies = TRUE)
 
-## Most recent estimates on forest land grouped by user-defined areal units
-ctSF <- invasive(fiaRI_mr,
-                 polys = countiesRI,
-                 returnSpatial = TRUE)
+## Same as above, but implemented in parallel (much quicker)
+parallel::detectCores(logical = FALSE) # 4 cores available, we will take 2
+seedling(db = fiaRI_mr,
+    landType = 'forest',
+    bySpecies = TRUE,
+    nCores = 2)
+
+
+## Most recent estimates for all stems on forest land grouped by user-defined areal units
+ctSF <- seedling(fiaRI_mr,
+            polys = countiesRI,
+            returnSpatial = TRUE)
 plot(ctSF) # Plot multiple variables simultaneously
-plotFIA(ctSF[ctSF$SYMBOL == 'ROMU',], COVER_PCT) # Plot Multiflora rose coverage
+plotFIA(ctSF, TPA) # Plot of TPA with color scale
 }
 }
-
