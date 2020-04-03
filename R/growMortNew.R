@@ -74,7 +74,7 @@ growMort <- function(db,
 
   ## No EXP_GROW available for Western States, make sure we warn that values will be returned as 0
   # These states do not allow temporal queries. Things are extremely weird with their eval groups
-  noGrow <- c(02,03,04,07,08,11,14,15,16, 23, 30, 32, 35,43,49, 78)
+  noGrow <- c(02,03,04,07,08,11,14,15,16, 30, 32, 35,43,49, 78)
   if(any(unique(db$PLOT$STATECD) %in% noGrow)){
     vState <- unique(db$PLOT$STATECD[db$PLOT$STATECD %in% noGrow])
     fancyName <- unique(intData$EVAL_GRP$STATE[intData$EVAL_GRP$STATECD %in% vState])
@@ -147,7 +147,7 @@ growMort <- function(db,
     # Test if any polygons cross state boundaries w/ different recent inventory years (continued w/in loop)
     if ('mostRecent' %in% names(db) & length(unique(db$POP_EVAL$STATECD)) > 1){
       mergeYears <- pltSF %>%
-        right_join(select(db$PLOT, PLT_CN, pltID), by = pltID) %>%
+        right_join(select(db$PLOT, PLT_CN, pltID), by = 'pltID') %>%
         inner_join(select(db$POP_PLOT_STRATUM_ASSGN, c('PLT_CN', 'EVALID', 'STATECD')), by = 'PLT_CN') %>%
         inner_join(select(db$POP_EVAL, c('EVALID', 'END_INVYR')), by = 'EVALID') %>%
         group_by(polyID) %>%
@@ -163,8 +163,8 @@ growMort <- function(db,
 
   ### HANDLE THE STATE VARIABLE, only applying to the midpoint table for consistency
   if (str_to_upper(stateVar) == 'TPA'){
-   db$TREE_GRM_MIDPT$state <- 1
-   db$TREE$state_recr <- 1
+    db$TREE_GRM_MIDPT$state <- 1
+    db$TREE$state_recr <- 1
   } else if (str_to_upper(stateVar) == 'BAA'){
     db$TREE_GRM_MIDPT$state <- basalArea(db$TREE_GRM_MIDPT$DIA)
     db$TREE$state_recr <- basalArea(db$TREE$DIA)
@@ -216,7 +216,12 @@ growMort <- function(db,
           TRUE ~ 0))
 
     } else if (tolower(treeType) == 'gs'){
-      db$TREE$typeD <- ifelse(db$TREE$DIA >= 5, 1, 0)
+      # db$TREE <- db$TREE %>%
+      #   mutate(typeD = case_when(
+      #     STATUSCD %in% 1:2 & DIA >=5 ~ 1,
+      #     STATUSCD == 3 & PREVDIA >=5 ~ 1,
+      #     TRUE ~ 0))
+      db$TREE$typeD <- 1
       db$TREE_GRM_COMPONENT <- rename(db$TREE_GRM_COMPONENT,
                                       TPAMORT_UNADJ = SUBP_TPAMORT_UNADJ_GS_FOREST,
                                       TPAREMV_UNADJ = SUBP_TPAREMV_UNADJ_GS_FOREST,
@@ -246,7 +251,12 @@ growMort <- function(db,
           TRUE ~ 0))
 
     } else if (tolower(treeType) == 'gs'){
-      db$TREE$typeD <- ifelse(db$TREE$DIA >= 5, 1, 0)
+      # db$TREE <- db$TREE %>%
+      #   mutate(typeD = case_when(
+      #     STATUSCD %in% 1:2 & DIA >=5 ~ 1,
+      #     STATUSCD == 3 & PREVDIA >=5 ~ 1,
+      #     TRUE ~ 0))
+      db$TREE$typeD <- 1
       db$TREE_GRM_COMPONENT <- rename(db$TREE_GRM_COMPONENT,
                                       TPAMORT_UNADJ = SUBP_TPAMORT_UNADJ_GS_TIMBER,
                                       TPAREMV_UNADJ = SUBP_TPAREMV_UNADJ_GS_TIMBER,
@@ -305,7 +315,7 @@ growMort <- function(db,
     filter(EVAL_TYP %in% c('EXPGROW', 'EXPMORT', 'EXPREMV')) %>%
     filter(!is.na(END_INVYR) & !is.na(EVALID) & END_INVYR >= 2003) %>%
     distinct(END_INVYR, EVALID, .keep_all = TRUE)# %>%
-    #group_by(END_INVYR) %>%
+  #group_by(END_INVYR) %>%
   #summarise(id = list(EVALID)
 
   ## Make an annual panel ID, associated with an INVYR
@@ -454,7 +464,6 @@ growMort <- function(db,
     grpBy <- c('YEAR', grpBy)
     aGrpBy <- c('YEAR', aGrpBy)
 
-
     ## Splitting up by ESTN_UNIT
     popState <- split(pops, as.factor(pops$STATECD))
 
@@ -594,7 +603,7 @@ growMort <- function(db,
     aTotal <- aEst %>%
       group_by(.dots = aGrpBy) %>%
       summarize_all(sum,na.rm = TRUE) #%>%
-      #mutate()
+    #mutate()
     # summarize(AREA_TOTAL = sum(aEst, na.rm = TRUE),
     #           aVar = sum(aVar, na.rm = TRUE),
     #           AREA_TOTAL_SE = sqrt(aVar) / AREA_TOTAL * 100,
@@ -665,17 +674,20 @@ growMort <- function(db,
                nPlots_TREE, nPlots_RECR, nPlots_MORT, nPlots_REMV,nPlots_AREA)
     }
 
-
-    ## Modify some names if a different state variable was given
-    #names(tOut) <- str_replace(names(tOut), 'TPA', paste(stateVar, 'ACRE', sep = '_'))
-
     # Snag the names
     tNames <- names(tOut)[names(tOut) %in% grpBy == FALSE]
+    ## Modify some names if a different state variable was given
+    #names(tOut) <- str_replace(names(tOut), 'TPA', paste(stateVar, 'ACRE', sep = '_'))
 
   }
 
   ## Modify some names if a different state variable was given
-  names(tOut) <- str_replace(names(tOut), 'TPA', paste(stateVar, 'ACRE', sep = '_'))
+  if (stateVar != 'TPA') names(tOut) <- str_replace(names(tOut), 'TPA', paste(stateVar, 'ACRE', sep = '_'))
+
+  # Snag the names
+  tNames <- names(tOut)[names(tOut) %in% grpBy == FALSE]
+  ## Modify some names if a different state variable was given
+  #names(tOut) <- str_replace(names(tOut), 'TPA', paste(stateVar, 'ACRE', sep = '_'))
 
   ## Pretty output
   tOut <- tOut %>%
@@ -721,6 +733,3 @@ growMort <- function(db,
   if (byPlot) tOut <- unique(tOut)
   return(tOut)
 }
-
-
-

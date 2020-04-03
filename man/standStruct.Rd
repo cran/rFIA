@@ -112,11 +112,11 @@ fiaRI_mr <- clipFIA(fiaRI)
 ## Calculate structural stage distribution of all forestland
 standStruct(fiaRI_mr)
 
+\donttest{
 ## Same as above, but output contains seperate column for each structural stage,
 ##   rathern than grouping variable
 standStruct(fiaRI_mr, tidy = FALSE)
 
-\donttest{
 ## Calculate structural stage distribution of all forestland by owner group, over time
 standStruct(fiaRI_mr,
             grpBy = OWNGRPCD)

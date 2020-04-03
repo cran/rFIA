@@ -134,7 +134,7 @@ tpa <- function(db,
     # Test if any polygons cross state boundaries w/ different recent inventory years (continued w/in loop)
     if ('mostRecent' %in% names(db) & length(unique(db$POP_EVAL$STATECD)) > 1){
       mergeYears <- pltSF %>%
-        right_join(select(db$PLOT, PLT_CN, pltID), by = pltID) %>%
+        right_join(select(db$PLOT, PLT_CN, pltID), by = 'pltID') %>%
         inner_join(select(db$POP_PLOT_STRATUM_ASSGN, c('PLT_CN', 'EVALID', 'STATECD')), by = 'PLT_CN') %>%
         inner_join(select(db$POP_EVAL, c('EVALID', 'END_INVYR')), by = 'EVALID') %>%
         group_by(polyID) %>%
@@ -517,6 +517,7 @@ tpa <- function(db,
             BA_SE = sqrt(baVar) / BA_TOTAL * 100,
             nPlots_TREE = plotIn_TREE) %>%
       select(grpBy, TREE_TOTAL, BA_TOTAL, treeVar, baVar, cvT, cvB, TREE_SE, BA_SE, nPlots_TREE)
+
     ## IF using polys, we treat each zone as a unique population
     if (!is.null(polys)){
       propGrp <- c('polyID', grpBy)
@@ -551,6 +552,8 @@ tpa <- function(db,
                bpVar = (1/BA_TOTAL_full^2) * (baVar + (BAA_PERC^2 * bTVar) - (2 * BAA_PERC * cvBT)),
                TPA_PERC_SE = sqrt(tpVar) / TPA_PERC * 100,
                BAA_PERC_SE = sqrt(bpVar) / BAA_PERC * 100)
+
+
     })
 
 
@@ -613,3 +616,6 @@ tpa <- function(db,
   if (byPlot) tOut <- unique(tOut)
   return(tOut)
 }
+
+
+

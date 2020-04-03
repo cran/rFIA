@@ -4,20 +4,25 @@
   #packageStartupMessage('Download FIA Data Here: https://apps.fs.usda.gov/fia/datamart/datamart.html')
 }
 
-projectPnts <- function(x, y, slope, yint){
-  P = data.frame(x, y)
-  P$m <- slope
-  P$n <- yint
-  ## Perp Points
-  P$x1 = P$x + -slope
-  P$y1 = P$y + 1
-  ## Perp Line
-  P$m1 = (P$y1-P$y)/(P$x1-P$x)
-  P$n1 = P$y - P$m1*P$x
-  ## Line intersection
-  P$x=(P$n1-P$n)/(P$m-P$m1)
-  P$y=P$m*P$x+P$n
-
+projectPnts <- function(x, y, slope = NULL, yint = NULL){
+  if (is.null(slope)){
+    P = data.frame(xOrig = x, yOrig = y)
+    P$x <- (P$yOrig+P$xOrig) / 2
+    P$y <- P$x
+  } else {
+    P = data.frame(x, y)
+    P$m <- slope
+    P$n <- yint
+    ## Perp Points
+    P$x1 = P$x + -slope
+    P$y1 = P$y + 1
+    ## Perp Line
+    P$m1 = (P$y1-P$y)/(P$x1-P$x)
+    P$n1 = P$y - P$m1*P$x
+    ## Line intersection
+    P$x=(P$n1-P$n)/(P$m-P$m1)
+    P$y=P$m*P$x+P$n
+  }
   return(P)
 }
 
@@ -758,6 +763,8 @@ getFIA <- function(states,
       dir.create(dir)
       message(paste('Creating directory:', dir))
     }
+
+    message(paste0('Saving to ', dir, '. NOTE: modifying FIA tables in Excel may corrupt csv files.'))
   }
 
   ## If dir is not specified, hold in a temporary directory
@@ -961,6 +968,7 @@ writeFIA <- function(db,
     if(!dir.exists(dir)) {
       stop(paste('Directory', dir, 'does not exist. Cannot create new directory.'))
     }
+    message(paste0('Saving to ', dir, '. NOTE: modifying FIA tables in Excel may corrupt csv files.'))
   }
 
   tableNames <- names(db)
@@ -1046,7 +1054,14 @@ findEVALID <- function(db = NULL,
                 LOCATION_NM = first(LOCATION_NM))
       #filter(END_INVYR == max(END_INVYR, na.rm = TRUE))
 
-    ids <- left_join(maxYear, select(ids, c('LOCATION_NM', 'EVAL_TYP', 'END_INVYR', 'EVALID')), by = c('LOCATION_NM', 'EVAL_TYP', 'END_INVYR'))
+    ids <- ids %>%
+      mutate(place = str_to_upper(LOCATION_NM)) %>%
+      ### TEXAS IS REALLY ANNOYING LIKE THIS
+      ### FOR NOW, ONLY THE ENTIRE STATE
+      filter(place %in% c('TEXAS(EAST)', 'TEXAS(WEST)') == FALSE)
+
+
+    ids <- left_join(maxYear, select(ids, c('place', 'EVAL_TYP', 'END_INVYR', 'EVALID')), by = c('place', 'EVAL_TYP', 'END_INVYR'))
   }
 
   # Output as vector
@@ -1084,6 +1099,7 @@ clipFIA <- function(db,
 
   ######### IF USER SPECIES EVALID (OR MOST RECENT), EXTRACT APPROPRIATE PLOTS ##########
   if (!is.null(evalid)){
+    if (mostRecent) warning('Returning subset by EVALID only. For most recent subset, specify `evalid = NULL` and `mostRecent = TRUE`.')
     # Join appropriate tables and filter out specified EVALIDs
     tempData <- select(db$PLOT, CN, PREV_PLT_CN) %>%
       mutate(PLT_CN = CN) %>%
@@ -1092,11 +1108,12 @@ clipFIA <- function(db,
       filter(EVALID %in% evalid)
     # Extract plots which relate to specified EVALID (previous for change estimation)
     PPLOT <- db$PLOT[db$PLOT$CN %in% tempData$PREV_PLT_CN,]
+    if (nrow(PPLOT) < 1) PPLOT <- NULL
     db$PLOT <- db$PLOT[db$PLOT$CN %in% tempData$PLT_CN,]
   }
 
   ## Locate the most recent EVALID and subset plots
-  if (mostRecent){
+  if (mostRecent & is.null(evalid)){
     suppressWarnings({
     tempData <- select(db$PLOT, CN, PREV_PLT_CN) %>%
       mutate(PLT_CN = CN) %>%
@@ -1112,6 +1129,7 @@ clipFIA <- function(db,
 
     # Extract appropriate PLOTS
     PPLOT <- db$PLOT[db$PLOT$CN %in% tempData$PREV_PLT_CN,]
+    if (nrow(PPLOT) < 1) PPLOT <- NULL
     db$PLOT <- db$PLOT[db$PLOT$CN %in% tempData$PLT_CN,]
     #test = db$PLOT <- db$PLOT[db$PLOT$CN %in% tempData$PLT_CN,]
 
@@ -1155,9 +1173,12 @@ clipFIA <- function(db,
        filter(!is.na(LAT) & !is.na(LON)) %>%
        distinct(pltID, .keep_all = TRUE)
      coordinates(pltSF) <- ~LON+LAT
-     proj4string(pltSF) <- '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs'
-     pltSF <- as(pltSF, 'sf') %>%
-       st_transform(crs = st_crs(mask)$proj4string)
+     #proj4string(pltSF) <- '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs'
+     #pltSF <- as(pltSF, 'sf') %>%
+     #   st_transform(crs = st_crs(mask)$proj4string)
+     pltSF <- as(pltSF, 'sf')
+     st_crs(pltSF) <- 4326 #%>%
+     pltSF <- st_transform(pltSF, crs = st_crs(mask))
 
      ## Split up polys
      polyList <- split(mask, as.factor(mask$polyID))
@@ -1180,7 +1201,7 @@ clipFIA <- function(db,
      pltSF <- bind_rows(out) %>%
        left_join(select(db$PLOT, PLT_CN, PREV_PLT_CN, pltID), by = 'pltID')
 
-     PPLOT <- filter(db$PLOT, db$PLOT$PLT_CN %in% pltSF$PREV_PLT_CN)
+     if(mostRecent == FALSE & is.null(evalid)) PPLOT <- filter(db$PLOT, db$PLOT$PLT_CN %in% pltSF$PREV_PLT_CN)
      db$PLOT <- filter(db$PLOT, db$PLOT$PLT_CN %in% pltSF$PLT_CN)
 
     #  ###OLD
