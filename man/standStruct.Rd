@@ -122,7 +122,7 @@ standStruct(fiaRI_mr,
             grpBy = OWNGRPCD)
 
 ## Same as above, but implemented in parallel
-parallel::detectCores(logical = FAlSE) # 4 cores available, we will take 2
+parallel::detectCores(logical = FALSE) # 4 cores available, we will take 2
 standStruct(fiaRI_mr,
             grpBy = OWNGRPCD,
             nCores = 2)
