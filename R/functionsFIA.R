@@ -463,11 +463,13 @@ print.FIA.Database <- function(x, ...){
 #' @import ggplot2
 #' @import bit64
 #' @import progress
+#' @import tidyselect
+#' @import purrr
 #' @importFrom data.table fread fwrite rbindlist
 #' @importFrom parallel makeCluster detectCores mclapply parLapply stopCluster clusterEvalQ
 #' @import tidyr
 #' @importFrom sp over proj4string<- coordinates<- spTransform proj4string
-#' @importFrom stats cov var
+#' @importFrom stats cov var coef lm
 #' @importFrom utils object.size read.csv tail globalVariables type.convert download.file unzip
 NULL
 

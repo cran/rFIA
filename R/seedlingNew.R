@@ -112,7 +112,7 @@ seedling <- function(db,
     coordinates(pltSF) <- ~LON+LAT
     proj4string(pltSF) <- '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs'
     pltSF <- as(pltSF, 'sf') %>%
-      st_transform(crs = st_crs(polys)$proj4string)
+      st_transform(crs = st_crs(polys))
 
     ## Split up polys
     polyList <- split(polys, as.factor(polys$polyID))
@@ -498,7 +498,7 @@ seedling <- function(db,
     }
     ## Hand the proportions
     tpTotal <- tEst %>%
-      group_by(.dots = propGrp) %>%
+      group_by(.dots = unique(propGrp)) %>%
       summarize(TREE_TOTAL_full = sum(tTEst, na.rm = TRUE), ## Need to sum this
                 tTVar = sum(tTVar, na.rm = TRUE),
                 cvTT = sum(cvEst_tT, na.rm = TRUE))
@@ -508,7 +508,7 @@ seedling <- function(db,
       ## Bring them together
       tTotal <- tTotal %>%
         left_join(aTotal, by = aGrpBy) %>%
-        left_join(tpTotal, by = propGrp) %>%
+        left_join(tpTotal, by = unique(propGrp)) %>%
         mutate(TPA = TREE_TOTAL / AREA_TOTAL,
                tpaVar = (1/AREA_TOTAL^2) * (treeVar + (TPA^2 * aVar) - 2 * TPA * cvT),
                TPA_SE = sqrt(tpaVar) / TPA * 100,

@@ -1,20 +1,30 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# rFIA: Unlocking the FIA Database in R
+# rFIA: Unlocking the FIA Database in R <a href='https://rfia.netlify.app'><img src='man/figures/logo.PNG' align="right" height="139" /></a>
 
 <!-- badges: start -->
 
-[![CRAN
-status](https://www.r-pkg.org/badges/version/rFIA)](https://cran.r-project.org/package=rFIA)
-[![](https://cranlogs.r-pkg.org/badges/grand-total/rFIA)](https://cran.r-project.org/package=rFIA)
-[![Travis build
-status](https://travis-ci.org/hunter-stanke/rFIA.svg?branch=master)](https://travis-ci.org/hunter-stanke/rFIA)
-[![Lifecycle:
-maturing](https://img.shields.io/badge/lifecycle-maturing-blue.svg)](https://www.tidyverse.org/lifecycle/#maturing)
+[![](https://www.r-pkg.org/badges/version/rFIA?color=green)](https://cran.r-project.org/package=rFIA)
+[![](https://img.shields.io/badge/Cite%20rFIA!-in%20EMS-yellow.svg)](https://www.sciencedirect.com/science/article/abs/pii/S1364815219311089)
+[![](http://cranlogs.r-pkg.org/badges/last-month/rFIA?color=blue)](https://cran.r-project.org/package=rFIA)
+[![](https://travis-ci.org/hunter-stanke/rFIA.svg?branch=master)](https://travis-ci.org/hunter-stanke/rFIA)
+
+<!-- [![](https://img.shields.io/badge/Cite%20rFIA!-in%20EMS-yellow.svg)](https://www.sciencedirect.com/science/article/abs/pii/S1364815219311089) -->
+
+<!-- [![CRAN status](https://www.r-pkg.org/badges/version/rFIA)](https://cran.r-project.org/package=rFIA) -->
+
+<!-- [![](https://cranlogs.r-pkg.org/badges/grand-total/rFIA)](https://cran.r-project.org/package=rFIA) -->
+
+<!-- [![](http://cranlogs.r-pkg.org/badges/last-month/rFIA?color=green)](https://cran.r-project.org/package=rFIA) -->
+
+<!-- [![Travis build status](https://travis-ci.org/hunter-stanke/rFIA.svg?branch=master)](https://travis-ci.org/hunter-stanke/rFIA) -->
+
+<!-- [![Lifecycle: maturing](https://img.shields.io/badge/lifecycle-maturing-blue.svg)](https://www.tidyverse.org/lifecycle/#maturing) -->
+
 <!-- badges: end -->
 
-![US Biomass](man/figures/usBiomass.png)
+![US Biomass](man/figures/usBiomass.jpg)
 
 The goal of `rFIA` is to increase the accessibility and use of the USFS
 Forest Inventory and Analysis (FIA) Database by providing a
@@ -36,6 +46,18 @@ errors produced by EVALIDator. Current development is focused on the
 implementation of spatially-enabled model-assisted estimators to improve
 population, change, and ratio estimates.
 
+For more information and example usage of `rFIA`, check out our
+[website](https://rfia.netlify.app/). To report a bug or suggest
+additions to `rFIA`, please use our [active
+issues](https://github.com/hunter-stanke/rFIA/issues) page here on
+GitHub, or contact [Hunter Stanke](https://hunter-stanke.com/) (lead
+developer and maintainer).
+
+***To cite*** `rFIA`, please refer to our recent publication in
+[Environmental Modeling and
+Software](https://doi.org/10.1016/j.envsoft.2020.104664) (doi:
+<https://doi.org/10.1016/j.envsoft.2020.104664>).
+
 <br>
 
 ## Installation
@@ -47,8 +69,7 @@ You can install the released version of `rFIA` from
 install.packages("rFIA")
 ```
 
-Alternatively, you can install the development version from
-GitHub:
+Alternatively, you can install the development version from GitHub:
 
 ``` r
 devtools::install_github('hunter-stanke/rFIA')
@@ -60,20 +81,21 @@ devtools::install_github('hunter-stanke/rFIA')
 
 | `rFIA` Function | Description                                                        |
 | --------------- | ------------------------------------------------------------------ |
-| `area`          | Estimate land area                                                 |
+| `area`          | Estimate land area in various classes                              |
 | `biomass`       | Estimate volume, biomass, & carbon stocks of standing trees        |
-| `clipFIA`       | Spatial & temporal queries                                         |
-| `diversity`     | Estimate species diversity                                         |
+| `clipFIA`       | Spatial & temporal queries for FIA data                            |
+| `diversity`     | Estimate diversity indices (e.g. species diversity)                |
 | `dwm`           | Estimate volume, biomass, and carbon stocks of down woody material |
 | `getFIA`        | Download FIA data, load into R, and optionally save to disk        |
 | `growMort`      | Estimate recruitment, mortality, and harvest rates                 |
 | `invasive`      | Estimate areal coverage of invasive species                        |
-| `plotFIA`       | Produce static & animated plots of spatial FIA summaries           |
-| `readFIA`       | Load FIA database into R environment                               |
+| `plotFIA`       | Produce static & animated plots of FIA summaries                   |
+| `readFIA`       | Load FIA database into R environment from disk                     |
 | `seedling`      | Estimate seedling abundance (TPA)                                  |
 | `standStruct`   | Estimate forest structural stage distributions                     |
 | `tpa`           | Estimate abundance of standing trees (TPA & BAA)                   |
 | `vitalRates`    | Estimate live tree growth rates                                    |
+| `writeFIA`      | Write in-memory FIA Database to disk                               |
 
 <br>
 
@@ -85,8 +107,7 @@ The first step to using `rFIA` is to download subsets of the FIA
 Database. The easiest way to accomplish this is using `getFIA`. Using
 one line of code, you can download state subsets of the FIA Database,
 load data into your R environment, and optionally save those data to a
-local directory for future
-use\!
+local directory for future use\!
 
 ``` r
 ## Download the state subset or Connecticut (requires an internet connection)
@@ -102,7 +123,7 @@ like to download all available tables for a state, simple specify
 
 **But what if I want to load multiple states worth of FIA data into R?**
 No problem\! Simply specify mutiple state abbreviations in the `states`
-argument of `getFIA` (e.g. `states = c('MI', 'IN', 'WI', 'IL'`)), and
+argument of `getFIA` (e.g. `states = c('MI', 'IN', 'WI', 'IL'`)), and
 all state subsets will be downloaded and merged into a single
 `FIA.Database` object. This will allow you to use other `rFIA` functions
 to produce estimates within polygons which straddle state boundaries\!
@@ -145,17 +166,21 @@ head(tpaRI_MR)
 #>    YEAR   TPA   BAA TPA_PERC BAA_PERC TPA_SE BAA_SE TPA_PERC_SE BAA_PERC_SE
 #>   <int> <dbl> <dbl>    <dbl>    <dbl>  <dbl>  <dbl>       <dbl>       <dbl>
 #> 1  2018  427.  122.     93.2     93.7   6.63   3.06        7.62        4.48
-#> # … with 2 more variables: nPlots_TREE <dbl>, nPlots_AREA <dbl>
+#> # ... with 2 more variables: nPlots_TREE <dbl>, nPlots_AREA <dbl>
 
 ## All Inventory Years Available (i.e., returns a time series)
 tpaRI <- tpa(fiaRI)
-
-## Time Series plot
-plotFIA(tpaRI, BAA, se = TRUE,
-        plot.title = 'Basal area per acre in Rhode Island over time')
+head(tpaRI)
+#> # A tibble: 5 x 11
+#>    YEAR   TPA   BAA TPA_PERC BAA_PERC TPA_SE BAA_SE TPA_PERC_SE BAA_PERC_SE
+#>   <int> <dbl> <dbl>    <dbl>    <dbl>  <dbl>  <dbl>       <dbl>       <dbl>
+#> 1  2014  466.  120.     96.8     95.0   6.73   3.09        7.62        4.60
+#> 2  2015  444.  121.     96.6     95.0   6.40   3.06        7.37        4.48
+#> 3  2016  450.  123.     95.8     95.0   6.46   2.94        7.45        4.49
+#> 4  2017  441.  123.     95.4     94.6   6.66   3.01        7.66        4.49
+#> 5  2018  427.  122.     93.2     93.7   6.63   3.06        7.62        4.48
+#> # ... with 2 more variables: nPlots_TREE <dbl>, nPlots_AREA <dbl>
 ```
-
-<img src="man/figures/README-unnamed-chunk-4-1.png" width="100%" />
 
 **What if I want to group estimates by species? How about by size
 class?**
@@ -165,12 +190,12 @@ class?**
 tpaRI_species <- tpa(fiaRI_MR, bySpecies = TRUE)
 head(tpaRI_species, n = 3)
 #> # A tibble: 3 x 14
-#>    YEAR  SPCD COMMON_NAME SCIENTIFIC_NAME    TPA    BAA TPA_PERC BAA_PERC
-#>   <int> <int> <chr>       <chr>            <dbl>  <dbl>    <dbl>    <dbl>
-#> 1  2018    12 balsam fir  Abies balsamea  0.0873 0.0295   0.0191   0.0226
-#> 2  2018    43 Atlantic w… Chamaecyparis … 0.247  0.180    0.0539   0.138 
-#> 3  2018    68 eastern re… Juniperus virg… 1.14   0.138    0.249    0.106 
-#> # … with 6 more variables: TPA_SE <dbl>, BAA_SE <dbl>, TPA_PERC_SE <dbl>,
+#>    YEAR  SPCD COMMON_NAME SCIENTIFIC_NAME    TPA    BAA TPA_PERC BAA_PERC TPA_SE
+#>   <int> <int> <chr>       <chr>            <dbl>  <dbl>    <dbl>    <dbl>  <dbl>
+#> 1  2018    12 balsam fir  Abies balsamea  0.0873 0.0295   0.0191   0.0226  114. 
+#> 2  2018    43 Atlantic w~ Chamaecyparis ~ 0.247  0.180    0.0539   0.138    59.1
+#> 3  2018    68 eastern re~ Juniperus virg~ 1.14   0.138    0.249    0.106    64.8
+#> # ... with 5 more variables: BAA_SE <dbl>, TPA_PERC_SE <dbl>,
 #> #   BAA_PERC_SE <dbl>, nPlots_TREE <dbl>, nPlots_AREA <dbl>
 
 ## Group estimates by size class
@@ -183,7 +208,7 @@ head(tpaRI_sizeClass, n = 3)
 #> 1  2018         1 188.   3.57     41.0     2.74  13.0   12.8         6.39
 #> 2  2018         3  68.6  5.76     15.0     4.42  15.1   15.8         6.39
 #> 3  2018         5  46.5  9.06     10.2     6.95   6.51   6.57        6.38
-#> # … with 3 more variables: BAA_PERC_SE <dbl>, nPlots_TREE <dbl>,
+#> # ... with 3 more variables: BAA_PERC_SE <dbl>, nPlots_TREE <dbl>,
 #> #   nPlots_AREA <dbl>
 
 ## Group by species and size class, and plot the distribution 
@@ -195,7 +220,7 @@ plotFIA(tpaRI_spsc, BAA, grp = COMMON_NAME, x = sizeClass,
         n.max = 5) # Only want the top 5 species, try n.max = -5 for bottom 5
 ```
 
-<img src="man/figures/README-unnamed-chunk-5-1.png" width="100%" />
+<img src="man/figures/README-unnamed-chunk-6-1.png" width="100%" />
 
 **What if I want estimates for a specific type of tree (ex. greater than
 12-inches DBH and in a canopy dominant or subdominant position) in
@@ -203,8 +228,7 @@ specific area (ex. growing on mesic sites), and I want to group by
 estimates by some variable other than species or size class (ex.
 ownsership group)?** Easy\! Each of these specifications are described
 in the FIA Database, and all `rFIA` functions can leverage these data to
-easily implement complex
-queries\!
+easily implement complex queries\!
 
 ``` r
 ## grpBy specifies what to group estimates by (just like species and size class above)
@@ -220,7 +244,7 @@ head(tpaRI_own)
 #>   <int>    <int> <dbl> <dbl>    <dbl>    <dbl>  <dbl>  <dbl>       <dbl>
 #> 1  2018       30 0.848  3.57     20.8     29.3   59.0   59.1        24.7
 #> 2  2018       40 1.49   3.99     79.2     70.7   25.7   27.7        24.7
-#> # … with 3 more variables: BAA_PERC_SE <dbl>, nPlots_TREE <dbl>,
+#> # ... with 3 more variables: BAA_PERC_SE <dbl>, nPlots_TREE <dbl>,
 #> #   nPlots_AREA <dbl>
 ```
 
@@ -241,7 +265,7 @@ tpaRI_counties <- tpa(fiaRI_MR, polys = countiesRI, returnSpatial = TRUE)
 plotFIA(tpaRI_counties, BAA) # Plotting method for spatial FIA summaries, also try 'TPA' or 'TPA_PERC'
 ```
 
-<img src="man/figures/README-unnamed-chunk-7-1.png" width="100%" />
+<img src="man/figures/README-unnamed-chunk-8-1.png" width="100%" />
 
 **We produced a really cool time series earlier, how would I marry the
 spatial and temporal capacity of `rFIA` to produce estimates across
@@ -260,4 +284,4 @@ tpaRI_st <- tpa(fiaRI, polys = countiesRI, returnSpatial = TRUE)
 plotFIA(tpaRI_st, TPA, animate = TRUE, legend.title = 'Abundance (TPA)', legend.height = .8)
 ```
 
-<img src="man/figures/README-unnamed-chunk-8-1.gif" width="100%" />
+<img src="man/figures/README-unnamed-chunk-9-1.gif" width="100%" />

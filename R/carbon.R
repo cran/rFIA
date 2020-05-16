@@ -1,22 +1,21 @@
 #' @export
-dwm <- function(db,
-                           grpBy = NULL,
-                           polys = NULL,
-                           returnSpatial = FALSE,
-                           landType = 'forest',
-                           method = 'TI',
-                           lambda = .5,
-                           areaDomain = NULL,
-                           byPlot = FALSE,
-                           totals = FALSE,
-                           tidy = TRUE,
-                           nCores = 1) {
-
+carbon <- function(db,
+                    grpBy = NULL,
+                    polys = NULL,
+                    returnSpatial = FALSE,
+                    byPool = TRUE,
+                    byComponent = FALSE,
+                    modelSnag = TRUE,
+                    landType = 'forest',
+                    method = 'TI',
+                    lambda = .5,
+                    areaDomain = NULL,
+                    totals = FALSE,
+                    byPlot = FALSE,
+                    nCores = 1) {
   ## Need a plotCN, and a new ID
   db$PLOT <- db$PLOT %>% mutate(PLT_CN = CN,
                                 pltID = paste(UNITCD, STATECD, COUNTYCD, PLOT, sep = '_'))
-  db$COND_DWM_CALC <- db[['COND_DWM_CALC']] %>% mutate(DWM_CN = CN)
-  db$COND <- db[['COND']] %>% mutate(CND_CN = CN)
 
   ##  don't have to change original code
   grpBy_quo <- enquo(grpBy)
@@ -38,14 +37,14 @@ dwm <- function(db,
     # If column doesnt exist, just returns 0, not a dataframe
     if (is.null(nrow(d_quo))){
       grpName <- quo_name(grpBy_quo)
-      stop(paste('Columns', grpName, 'not found in PLOT or COND tables. Did you accidentally quote the variables names? e.g. use grpBy = ECOSUBCD (correct) instead of grpBy = "ECOSUBCD". ', collapse = ', '))
+      stop(paste('Columns', grpName, 'not found in PLOT, or COND tables. Did you accidentally quote the variables names? e.g. use grpBy = ECOSUBCD (correct) instead of grpBy = "ECOSUBCD". ', collapse = ', '))
     } else {
       # Convert to character
       grpBy <- names(d_quo)
     }
   }
 
-  reqTables <- c('PLOT', 'COND_DWM_CALC', 'COND', 'POP_PLOT_STRATUM_ASSGN', 'POP_ESTN_UNIT', 'POP_EVAL',
+  reqTables <- c('PLOT', 'TREE', 'COND', 'POP_PLOT_STRATUM_ASSGN', 'POP_ESTN_UNIT', 'POP_EVAL',
                  'POP_STRATUM', 'POP_EVAL_TYP', 'POP_EVAL_GRP')
   ## Some warnings
   if (class(db) != "FIA.Database"){
@@ -64,6 +63,7 @@ dwm <- function(db,
   if (str_to_upper(method) %in% c('TI', 'SMA', 'LMA', 'EMA', 'ANNUAL') == FALSE) {
     warning(paste('Method', method, 'unknown. Defaulting to Temporally Indifferent (TI).'))
   }
+
 
   # I like a unique ID for a plot through time
   if (byPlot) {grpBy <- c('pltID', grpBy)}
@@ -89,6 +89,8 @@ dwm <- function(db,
     db$POP_EVAL <- bind_rows(filter(db$POP_EVAL, !(STATECD %in% 48)), txIDS)
   }
 
+
+
   ### AREAL SUMMARY PREP
   if(!is.null(polys)) {
     # Convert polygons to an sf object
@@ -100,7 +102,6 @@ dwm <- function(db,
     polys$polyID <- 1:nrow(polys)
 
     # Add shapefile names to grpBy
-    #grpBy = c(names(polys)[str_detect(names(polys), 'geometry') == FALSE], 'polyID', grpBy)
     grpBy = c(grpBy, 'polyID')
 
     ## Make plot data spatial, projected same as polygon layer
@@ -110,7 +111,9 @@ dwm <- function(db,
     coordinates(pltSF) <- ~LON+LAT
     proj4string(pltSF) <- '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs'
     pltSF <- as(pltSF, 'sf') %>%
+      #st_transform(crs = st_crs(polys)$proj4string)
       st_transform(crs = st_crs(polys))
+
 
     ## Split up polys
     polyList <- split(polys, as.factor(polys$polyID))
@@ -122,6 +125,7 @@ dwm <- function(db,
           library(dplyr)
           library(stringr)
           library(rFIA)
+          #library(sf)
         })
         out <- parLapply(cl, X = names(polyList), fun = areal_par, pltSF, polyList)
         #stopCluster(cl) # Keep the cluster active for the next run
@@ -137,7 +141,7 @@ dwm <- function(db,
     }
     ## Add polygon names to PLOT
     db$PLOT <- db$PLOT %>%
-      left_join(select(pltSF, polyID, pltID), by = 'pltID')
+      left_join(pltSF, by = 'pltID')
 
     # Test if any polygons cross state boundaries w/ different recent inventory years (continued w/in loop)
     if ('mostRecent' %in% names(db) & length(unique(db$POP_EVAL$STATECD)) > 1){
@@ -161,8 +165,6 @@ dwm <- function(db,
     db$COND$landD <- ifelse(db$COND$COND_STATUS_CD == 1, 1, 0)
   } else if (tolower(landType) == 'timber'){
     db$COND$landD <- ifelse(db$COND$COND_STATUS_CD == 1 & db$COND$SITECLCD %in% c(1, 2, 3, 4, 5, 6) & db$COND$RESERVCD == 0, 1, 0)
-  } else if (tolower(landType) == 'all') {
-    db$COND$landD <- 1
   }
 
   # update spatial domain indicator
@@ -187,11 +189,12 @@ dwm <- function(db,
   db$PLOT <- left_join(db$PLOT, aD_p, by = 'PLT_CN')
   rm(pcEval)
 
+
   ### Snag the EVALIDs that are needed
   db$POP_EVAL<- db$POP_EVAL %>%
     select('CN', 'END_INVYR', 'EVALID', 'ESTN_METHOD') %>%
     inner_join(select(db$POP_EVAL_TYP, c('EVAL_CN', 'EVAL_TYP')), by = c('CN' = 'EVAL_CN')) %>%
-    filter(EVAL_TYP == 'EXPDWM') %>%
+    filter(EVAL_TYP == 'EXPVOL' | EVAL_TYP == 'EXPCURR') %>%
     filter(!is.na(END_INVYR) & !is.na(EVALID) & END_INVYR >= 2003) %>%
     distinct(END_INVYR, EVALID, .keep_all = TRUE)# %>%
   #group_by(END_INVYR) %>%
@@ -265,13 +268,11 @@ dwm <- function(db,
                             `Subsampling units of unequal size` = 'simple')
 
 
-
   ## Only the necessary plots for EVAL of interest
   db$PLOT <- filter(db$PLOT, PLT_CN %in% pops$PLT_CN)
 
   ## Merging state and county codes
   plts <- split(db$PLOT, as.factor(paste(db$PLOT$COUNTYCD, db$PLOT$STATECD, sep = '_')))
-  #plts <- split(db$PLOT, as.factor(db$PLOT$STATECD))
 
   suppressWarnings({
     ## Compute estimates in parallel -- Clusters in windows, forking otherwise
@@ -282,12 +283,22 @@ dwm <- function(db,
         library(stringr)
         library(rFIA)
       })
-      out <- parLapply(cl, X = names(plts), fun = dwmHelper1, plts, db, grpBy, byPlot)
+      out <- parLapply(cl, X = names(plts), fun = carbonHelper1, plts, db, grpBy, byPlot, byPool, byComponent, modelSnag)
       #stopCluster(cl) # Keep the cluster active for the next run
     } else { # Unix systems
-      out <- mclapply(names(plts), FUN = dwmHelper1, plts, db, grpBy, byPlot, mc.cores = nCores)
+      out <- mclapply(names(plts), FUN = carbonHelper1, plts, db, grpBy, byPlot, byPool, byComponent, modelSnag, mc.cores = nCores)
     }
   })
+
+  ## Add pool/component to grpBy if necessary
+  if (byPool & byComponent == FALSE){
+    grpBy = c(grpBy, 'POOL')
+    grpByOrig = c(grpByOrig, 'POOL')
+  } else if (byComponent){
+    grpBy = c(grpBy, 'COMPONENT')
+    grpByOrig = c(grpByOrig, 'COMPONENT')
+
+  }
 
   if (byPlot){
     ## back to dataframes
@@ -307,6 +318,7 @@ dwm <- function(db,
     ## back to dataframes
     out <- unlist(out, recursive = FALSE)
     t <- bind_rows(out[names(out) == 't'])
+    a <- bind_rows(out[names(out) == 'a'])
 
     ## Adding YEAR to groups
     grpBy <- c('YEAR', grpBy)
@@ -325,16 +337,15 @@ dwm <- function(db,
         #   library(stringr)
         #   library(rFIA)
         # })
-        out <- parLapply(cl, X = names(popState), fun = dwmHelper2, popState, t, grpBy, method)
+        out <- parLapply(cl, X = names(popState), fun = carbonHelper2, popState, t, a, grpBy, method, byPool, byComponent, modelSnag)
         stopCluster(cl)
       } else { # Unix systems
-        out <- mclapply(names(popState), FUN = dwmHelper2, popState, t, grpBy, method, mc.cores = nCores)
+        out <- mclapply(names(popState), FUN = carbonHelper2, popState, t, a, grpBy, method, byPool, byComponent, modelSnag, mc.cores = nCores)
       }
     })
     ## back to dataframes
     out <- unlist(out, recursive = FALSE)
     tEst <- bind_rows(out[names(out) == 'tEst'])
-
 
 
     ##### ----------------- MOVING AVERAGES
@@ -346,7 +357,6 @@ dwm <- function(db,
           group_by(ESTN_UNIT_CN) %>%
           summarize(wgt = 1 / length(unique(INVYR)))
 
-        #aEst <- left_join(aEst, wgts, by = 'ESTN_UNIT_CN')
         tEst <- left_join(tEst, wgts, by = 'ESTN_UNIT_CN')
 
         #### ----- Linear MOVING AVERAGE
@@ -369,7 +379,6 @@ dwm <- function(db,
           ungroup() %>%
           select(ESTN_UNIT_CN, INVYR, wgt)
 
-        #aEst <- left_join(aEst, wgts, by = c('ESTN_UNIT_CN', 'INVYR'))
         tEst <- left_join(tEst, wgts, by = c('ESTN_UNIT_CN', 'INVYR'))
 
         #### ----- EXPONENTIAL MOVING AVERAGE
@@ -397,7 +406,6 @@ dwm <- function(db,
             select(ESTN_UNIT_CN, INVYR, wgt)
         } else {
           grpBy <- c('lambda', grpBy)
-          #aGrpBy <- c('lambda', aGrpBy)
           ## Duplicate weights for each level of lambda
           yrWgts <- list()
           for (i in 1:length(unique(lambda))) {
@@ -418,226 +426,65 @@ dwm <- function(db,
             select(lambda, ESTN_UNIT_CN, INVYR, wgt)
         }
 
-        #aEst <- left_join(aEst, wgts, by = c('ESTN_UNIT_CN', 'INVYR'))
         tEst <- left_join(tEst, wgts, by = c('ESTN_UNIT_CN', 'INVYR'))
 
       }
 
       ### Applying the weights
-      # Area
+
       tEst <- tEst %>%
-        mutate_at(vars(aEst:cEst), ~(.*wgt)) %>%
-        mutate_at(vars(aVar:cvEst_c), ~(.*(wgt^2))) %>%
+        mutate_at(vars(cEst,aEst), ~(.*wgt)) %>%
+        mutate_at(vars(cVar:cvEst_c), ~(.*(wgt^2))) %>%
         group_by(ESTN_UNIT_CN, .dots = grpBy) %>%
-        summarize_at(vars(aEst:cvEst_c), sum, na.rm = TRUE)
+        summarize_at(vars(cEst:plotIn_TREE), sum, na.rm = TRUE)
+
     }
 
     ##---------------------  TOTALS and RATIOS
+    # Tree
+    tTotal <- tEst %>%
+      group_by(.dots = grpBy) %>%
+      summarize_all(sum,na.rm = TRUE)
+
+
     suppressWarnings({
       ## Bring them together
-      tOut <- ungroup(tEst) %>%
-        group_by(.dots = grpBy) %>%
-        summarize_all(sum,na.rm = TRUE) %>%
+      tOut <- tTotal %>%
         # Renaming, computing ratios, and SE
-        mutate(VOL_DUFF = NA,
-               VOL_LITTER = NA,VOL_1HR = vsmEst,
-               VOL_10HR = vmdEst,
-               VOL_100HR = vlgEst,
-               VOL_1000HR =  vcEst,
-               VOL_PILE =  vpEst,
-               VOL =  vEst,
-               BIO_DUFF = bdEst,
-               BIO_LITTER = blEst,
-               BIO_1HR = bsmEst,
-               BIO_10HR = bmdEst,
-               BIO_100HR = blgEst,
-               BIO_1000HR = bcEst,
-               BIO_PILE = bpEst,
-               BIO = bEst,
-               CARB_DUFF = cdEst,
-               CARB_LITTER = clEst,
-               CARB_1HR = csmEst,
-               CARB_10HR = cmdEst,
-               CARB_100HR = clgEst,
-               CARB_1000HR = ccEst,
-               CARB_PILE = cpEst,
-               CARB = cEst,
-               AREA_TOTAL = aEst,
-               ## RATIOS
-               VOL_DUFF_ACRE = NA,
-               VOL_LITTER_ACRE = NA,
-               VOL_1HR_ACRE = vsmEst / aEst,
-               VOL_10HR_ACRE = vmdEst / aEst,
-               VOL_100HR_ACRE = vlgEst / aEst,
-               VOL_1000HR_ACRE =  vcEst / aEst,
-               VOL_PILE_ACRE =  vpEst / aEst,
-               VOL_ACRE =  vEst / aEst,
-               BIO_DUFF_ACRE = bdEst / aEst,
-               BIO_LITTER_ACRE = blEst / aEst,
-               BIO_1HR_ACRE = bsmEst / aEst,
-               BIO_10HR_ACRE = bmdEst / aEst,
-               BIO_100HR_ACRE = blgEst / aEst,
-               BIO_1000HR_ACRE = bcEst / aEst,
-               BIO_PILE_ACRE = bpEst / aEst,
-               BIO_ACRE = bEst / aEst,
-               CARB_DUFF_ACRE = cdEst / aEst,
-               CARB_LITTER_ACRE = clEst / aEst,
-               CARB_1HR_ACRE = csmEst / aEst,
-               CARB_10HR_ACRE = cmdEst / aEst,
-               CARB_100HR_ACRE = clgEst / aEst,
-               CARB_1000HR_ACRE = ccEst / aEst,
-               CARB_PILE_ACRE = cpEst / aEst,
-               CARB_ACRE = cEst / aEst,
-               # Sampling Errors totals
-               AREA_TOTAL_SE = sqrt(aVar) / AREA_TOTAL * 100,
-               VOL_DUFF_SE = NA,
-               VOL_LITTER_SE = NA,
-               VOL_1HR_SE = sqrt(vsmVar) / VOL_1HR * 100,
-               VOL_10HR_SE = sqrt(vmdVar) / VOL_10HR * 100,
-               VOL_100HR_SE = sqrt(vlgVar) / VOL_100HR * 100,
-               VOL_1000HR_SE = sqrt(vcVar) / VOL_1000HR * 100,
-               VOL_PILE_SE = sqrt(vpVar) / VOL_PILE * 100,
-               VOL_SE = sqrt(vVar) / VOL * 100,
-               BIO_DUFF_SE = sqrt(bdVar) / BIO_DUFF * 100,
-               BIO_LITTER_SE = sqrt(blVar) / BIO_LITTER * 100,
-               BIO_1HR_SE = sqrt(bsmVar) / BIO_1HR * 100,
-               BIO_10HR_SE = sqrt(bmdVar) / BIO_10HR * 100,
-               BIO_100HR_SE = sqrt(blgVar) / BIO_100HR * 100,
-               BIO_1000HR_SE = sqrt(bcVar) / BIO_1000HR * 100,
-               BIO_PILE_SE = sqrt(bpVar) / BIO_PILE * 100,
-               BIO_SE = sqrt(bVar) / BIO * 100,
-               CARB_DUFF_SE = sqrt(cdVar) / CARB_DUFF * 100,
-               CARB_LITTER_SE = sqrt(clVar) / CARB_LITTER * 100,
-               CARB_1HR_SE = sqrt(csmVar) / CARB_1HR * 100,
-               CARB_10HR_SE = sqrt(cmdVar) / CARB_10HR * 100,
-               CARB_100HR_SE = sqrt(clgVar) / CARB_100HR * 100,
-               CARB_1000HR_SE = sqrt(ccVar) / CARB_1000HR * 100,
-               CARB_PILE_SE = sqrt(cpVar) / CARB_PILE * 100,
-               CARB_SE = sqrt(cVar) / CARB * 100,
-               # Per Acre variances
-               vsmVar = (1/AREA_TOTAL^2) * (vsmVar + (VOL_1HR_ACRE^2 * aVar - 2 * VOL_1HR_ACRE * cvEst_vsm)),
-               vmdVar = (1/AREA_TOTAL^2) * (vmdVar + (VOL_10HR_ACRE^2 * aVar - 2 * VOL_10HR_ACRE * cvEst_vmd)),
-               vlgVar = (1/AREA_TOTAL^2) * (vlgVar + (VOL_100HR_ACRE^2 * aVar - 2 * VOL_100HR_ACRE * cvEst_vlg)),
-               vcVar = (1/AREA_TOTAL^2) * (vcVar + (VOL_1000HR_ACRE^2 * aVar - 2 * VOL_1000HR_ACRE *cvEst_vc)),
-               vpVar = (1/AREA_TOTAL^2) * (vpVar + (VOL_PILE_ACRE^2 * aVar - 2 * VOL_PILE_ACRE * cvEst_vp)),
-               vVar = (1/AREA_TOTAL^2) * (vVar + (VOL_ACRE^2 * aVar - 2 * VOL_ACRE * cvEst_v)),
-               bdVar = (1/AREA_TOTAL^2) * (bdVar + (BIO_DUFF_ACRE^2 * aVar - 2 * BIO_DUFF_ACRE * cvEst_bd)),
-               blVar = (1/AREA_TOTAL^2) * (blVar + (BIO_LITTER_ACRE^2 * aVar - 2 * BIO_LITTER_ACRE * cvEst_bl)),
-               bsmVar = (1/AREA_TOTAL^2) * (bsmVar + (BIO_1HR_ACRE^2 * aVar - 2 * BIO_1HR_ACRE * cvEst_bsm)),
-               bmdVar = (1/AREA_TOTAL^2) * (bmdVar + (BIO_10HR_ACRE^2 * aVar - 2 * BIO_10HR_ACRE * cvEst_bmd)),
-               blgVar = (1/AREA_TOTAL^2) * (blgVar + (BIO_100HR_ACRE^2 * aVar - 2 * BIO_100HR_ACRE * cvEst_blg)),
-               bcVar = (1/AREA_TOTAL^2) * (bcVar + (BIO_1000HR_ACRE^2 * aVar - 2 * BIO_1000HR_ACRE * cvEst_bc)),
-               bpVar = (1/AREA_TOTAL^2) * (bpVar + (BIO_PILE_ACRE^2 * aVar - 2 * BIO_PILE_ACRE * cvEst_bp)),
-               bVar = (1/AREA_TOTAL^2) * (bVar + (BIO_ACRE^2 * aVar - 2 * BIO_ACRE * cvEst_b)),
-               cdVar = (1/AREA_TOTAL^2) * (cdVar + (CARB_DUFF_ACRE^2 * aVar - 2 * CARB_DUFF_ACRE * cvEst_cd)),
-               clVar = (1/AREA_TOTAL^2) * (clVar + (CARB_LITTER_ACRE^2 * aVar - 2 * CARB_LITTER_ACRE * cvEst_cl)),
-               csmVar = (1/AREA_TOTAL^2) * (csmVar + (CARB_1HR_ACRE^2 * aVar - 2 * CARB_1HR_ACRE * cvEst_csm)),
-               cmdVar = (1/AREA_TOTAL^2) * (cmdVar + (CARB_10HR_ACRE^2 * aVar - 2 * CARB_10HR_ACRE * cvEst_cmd)),
-               clgVar = (1/AREA_TOTAL^2) * (clgVar + (CARB_100HR_ACRE^2 * aVar - 2 * CARB_100HR_ACRE * cvEst_clg)),
-               ccVar = (1/AREA_TOTAL^2) * (ccVar + (CARB_1000HR_ACRE^2 * aVar - 2 * CARB_1000HR_ACRE * cvEst_cc)),
-               cpVar = (1/AREA_TOTAL^2) * (cpVar + (CARB_PILE_ACRE^2 * aVar - 2 * CARB_PILE_ACRE * cvEst_cp)),
-               cVar = (1/AREA_TOTAL^2) * (cVar + (CARB_ACRE^2 * aVar - 2 * CARB_ACRE * cvEst_c)),
-               # Per acre sampling errors
-               VOL_DUFF_ACRE_SE = NA,
-               VOL_LITTER_ACRE_SE = NA,
-               VOL_1HR_ACRE_SE = sqrt(vsmVar) / VOL_1HR_ACRE * 100,
-               VOL_10HR_ACRE_SE = sqrt(vmdVar) / VOL_10HR_ACRE * 100,
-               VOL_100HR_ACRE_SE = sqrt(vlgVar) / VOL_100HR_ACRE * 100,
-               VOL_1000HR_ACRE_SE = sqrt(vcVar) / VOL_1000HR_ACRE * 100,
-               VOL_PILE_ACRE_SE = sqrt(vpVar) / VOL_PILE_ACRE * 100,
-               VOL_ACRE_SE = sqrt(vVar) / VOL_ACRE * 100,
-               BIO_DUFF_ACRE_SE = sqrt(bdVar) / BIO_DUFF_ACRE * 100,
-               BIO_LITTER_ACRE_SE = sqrt(blVar) / BIO_LITTER_ACRE * 100,
-               BIO_1HR_ACRE_SE = sqrt(bsmVar) / BIO_1HR_ACRE * 100,
-               BIO_10HR_ACRE_SE = sqrt(bmdVar) / BIO_10HR_ACRE * 100,
-               BIO_100HR_ACRE_SE = sqrt(blgVar) / BIO_100HR_ACRE * 100,
-               BIO_1000HR_ACRE_SE = sqrt(bcVar) / BIO_1000HR_ACRE * 100,
-               BIO_PILE_ACRE_SE = sqrt(bpVar) / BIO_PILE_ACRE * 100,
-               BIO_ACRE_SE = sqrt(bVar) / BIO_ACRE * 100,
-               CARB_DUFF_ACRE_SE = sqrt(cdVar) / CARB_DUFF_ACRE * 100,
-               CARB_LITTER_ACRE_SE = sqrt(clVar) / CARB_LITTER_ACRE * 100,
-               CARB_1HR_ACRE_SE = sqrt(csmVar) / CARB_1HR_ACRE * 100,
-               CARB_10HR_ACRE_SE = sqrt(cmdVar) / CARB_10HR_ACRE * 100,
-               CARB_100HR_ACRE_SE = sqrt(clgVar) / CARB_100HR_ACRE * 100,
-               CARB_1000HR_ACRE_SE = sqrt(ccVar) / CARB_1000HR_ACRE * 100,
-               CARB_PILE_ACRE_SE = sqrt(cpVar) / CARB_PILE_ACRE * 100,
-               CARB_ACRE_SE = sqrt(cVar) / CARB_ACRE * 100,
-               nPlots_DWM = plotIn)
+        mutate(AREA_TOTAL = aEst,
+               CARB_TOTAL = cEst,
+               ## Ratios
+               CARB_ACRE = CARB_TOTAL / AREA_TOTAL,
+               ## Ratio Var
+               caVar = (1/AREA_TOTAL^2) * (cVar + (CARB_ACRE^2 * aVar) - 2 * CARB_ACRE * cvEst_c),
+               ## SE RATIO
+               CARB_ACRE_SE = sqrt(caVar) / CARB_ACRE *100,
+               ## SE TOTAL
+               AREA_TOTAL_SE = sqrt(aVar) / AREA_TOTAL *100,
+               CARB_TOTAL_SE = sqrt(caVar) / CARB_TOTAL *100,
+               ## nPlots
+               nPlots_TREE = plotIn_TREE,
+               nPlots_AREA = plotIn_AREA)
     })
-    # Remove the total values if told to do so
+
+
     if (totals) {
+
       tOut <- tOut %>%
-        select(grpBy, names(tOut)[str_detect(names(tOut), 'Var', negate = TRUE) &
-                                    str_detect(names(tOut), 'cvEst', negate = TRUE) &
-                                    str_detect(names(tOut), 'Est', negate = TRUE)], nPlots_DWM)
+        select(grpBy, "CARB_ACRE","CARB_TOTAL", "AREA_TOTAL","CARB_ACRE_SE", "CARB_TOTAL_SE",
+               "AREA_TOTAL_SE","nPlots_TREE","nPlots_AREA")
+
     } else {
       tOut <- tOut %>%
-        select(grpBy, names(tOut)[str_detect(names(tOut), 'Var', negate = TRUE) &
-                                    str_detect(names(tOut), 'cvEst', negate = TRUE) &
-                                    str_detect(names(tOut), 'Est', negate = TRUE) &
-                                    str_detect(names(tOut), 'ACRE')], nPlots_DWM)
+        select(grpBy, "CARB_ACRE","CARB_ACRE_SE",
+               "nPlots_TREE","nPlots_AREA")
     }
 
     # Snag the names
     tNames <- names(tOut)[names(tOut) %in% grpBy == FALSE]
 
-    ## Tidy things up if they didn't specify polys, returnSpatial
-    if (tidy & is.null(polys) & returnSpatial == FALSE){
-      ## pivot longer
-      bio <- pivot_longer(select(tOut, grpBy, BIO_DUFF_ACRE:BIO_ACRE, nPlots_DWM), names_to = 'FUEL_TYPE', values_to = 'BIO_ACRE', cols = BIO_DUFF_ACRE:BIO_ACRE) %>%
-        mutate(FUEL_TYPE = str_split(FUEL_TYPE,pattern= '_', simplify = TRUE,)[,2])
-      bio_SE <-pivot_longer(select(tOut, grpBy, BIO_DUFF_ACRE_SE:BIO_ACRE_SE), names_to = 'FUEL_TYPE', values_to = 'BIO_ACRE_SE', cols = BIO_DUFF_ACRE_SE:BIO_ACRE_SE) %>%
-        mutate(FUEL_TYPE = str_split(FUEL_TYPE,pattern= '_', simplify = TRUE,)[,2])
-      vol <- pivot_longer(select(tOut, grpBy, VOL_DUFF_ACRE:VOL_ACRE), names_to = 'FUEL_TYPE', values_to = 'VOL_ACRE', cols = VOL_DUFF_ACRE:VOL_ACRE) %>%
-        mutate(FUEL_TYPE = str_split(FUEL_TYPE,pattern= '_', simplify = TRUE,)[,2])
-      vol_SE <-pivot_longer(select(tOut, grpBy, VOL_DUFF_ACRE_SE:VOL_ACRE_SE), names_to = 'FUEL_TYPE', values_to = 'VOL_ACRE_SE', cols = VOL_DUFF_ACRE_SE:VOL_ACRE_SE) %>%
-        mutate(FUEL_TYPE = str_split(FUEL_TYPE,pattern= '_', simplify = TRUE,)[,2])
-      carb <- pivot_longer(select(tOut, grpBy, CARB_DUFF_ACRE:CARB_ACRE), names_to = 'FUEL_TYPE', values_to = 'CARB_ACRE', cols = CARB_DUFF_ACRE:CARB_ACRE) %>%
-        mutate(FUEL_TYPE = str_split(FUEL_TYPE,pattern= '_', simplify = TRUE,)[,2])
-      carb_SE <-pivot_longer(select(tOut, grpBy, CARB_DUFF_ACRE_SE:CARB_ACRE_SE), names_to = 'FUEL_TYPE', values_to = 'CARB_ACRE_SE', cols = CARB_DUFF_ACRE_SE:CARB_ACRE_SE) %>%
-        mutate(FUEL_TYPE = str_split(FUEL_TYPE,pattern= '_', simplify = TRUE,)[,2])
-      ## rejoin
-      fuel <- left_join(bio, bio_SE, by = c(grpBy, 'FUEL_TYPE')) %>%
-        left_join(vol, by = c(grpBy, 'FUEL_TYPE')) %>%
-        left_join(vol_SE, by = c(grpBy, 'FUEL_TYPE')) %>%
-        left_join(carb, by = c(grpBy, 'FUEL_TYPE')) %>%
-        left_join(carb_SE, by = c(grpBy, 'FUEL_TYPE')) %>%
-        select(grpBy, FUEL_TYPE, VOL_ACRE, BIO_ACRE, CARB_ACRE, VOL_ACRE_SE, BIO_ACRE_SE, CARB_ACRE_SE, nPlots_DWM) %>%
-        filter(FUEL_TYPE %in% 'ACRE' == FALSE)
+  }
 
-      if (totals){
-        ## pivot longer
-        bio <- pivot_longer(select(tOut, grpBy, BIO_DUFF:BIO), names_to = 'FUEL_TYPE', values_to = 'BIO_TOTAL', cols = BIO_DUFF:BIO) %>%
-          mutate(FUEL_TYPE = str_split(FUEL_TYPE,pattern= '_', simplify = TRUE,)[,2])
-        bio_SE <-pivot_longer(select(tOut, grpBy, BIO_DUFF_SE:BIO_SE), names_to = 'FUEL_TYPE', values_to = 'BIO_TOTAL_SE', cols = BIO_DUFF_SE:BIO_SE) %>%
-          mutate(FUEL_TYPE = str_split(FUEL_TYPE,pattern= '_', simplify = TRUE,)[,2])
-        vol <- pivot_longer(select(tOut, grpBy, VOL_DUFF:VOL), names_to = 'FUEL_TYPE', values_to = 'VOL_TOTAL', cols = VOL_DUFF:VOL) %>%
-          mutate(FUEL_TYPE = str_split(FUEL_TYPE,pattern= '_', simplify = TRUE,)[,2])
-        vol_SE <-pivot_longer(select(tOut, grpBy, VOL_DUFF_SE:VOL_SE), names_to = 'FUEL_TYPE', values_to = 'VOL_TOTAL_SE', cols = VOL_DUFF_SE:VOL_SE) %>%
-          mutate(FUEL_TYPE = str_split(FUEL_TYPE,pattern= '_', simplify = TRUE,)[,2])
-        carb <- pivot_longer(select(tOut, grpBy, CARB_DUFF:CARB), names_to = 'FUEL_TYPE', values_to = 'CARB_TOTAL', cols = CARB_DUFF:CARB) %>%
-          mutate(FUEL_TYPE = str_split(FUEL_TYPE,pattern= '_', simplify = TRUE,)[,2])
-        carb_SE <-pivot_longer(select(tOut, grpBy, CARB_DUFF_SE:CARB_SE), names_to = 'FUEL_TYPE', values_to = 'CARB_TOTAL_SE', cols = CARB_DUFF_SE:CARB_SE) %>%
-          mutate(FUEL_TYPE = str_split(FUEL_TYPE,pattern= '_', simplify = TRUE,)[,2])
-        ## Rejoin
-        fuel <- fuel %>%
-          left_join(bio, by = c(grpBy, 'FUEL_TYPE')) %>%
-          left_join(bio_SE, by = c(grpBy, 'FUEL_TYPE')) %>%
-          left_join(vol, by = c(grpBy, 'FUEL_TYPE')) %>%
-          left_join(vol_SE, by = c(grpBy, 'FUEL_TYPE')) %>%
-          left_join(carb, by = c(grpBy, 'FUEL_TYPE')) %>%
-          left_join(carb_SE, by = c(grpBy, 'FUEL_TYPE')) %>%
-          left_join(select(tOut, AREA_TOTAL, AREA_TOTAL_SE, grpBy), by = c(grpBy))%>%
-          select(grpBy, FUEL_TYPE, VOL_ACRE, BIO_ACRE, CARB_ACRE, VOL_TOTAL, BIO_TOTAL, CARB_TOTAL,
-                 AREA_TOTAL, VOL_ACRE_SE, BIO_ACRE_SE, CARB_ACRE_SE,
-                 VOL_TOTAL_SE, BIO_TOTAL_SE, CARB_TOTAL_SE,
-                  AREA_TOTAL_SE, nPlots_DWM) %>%
-          filter(FUEL_TYPE %in% 'ACRE' == FALSE)
-      }
-      tOut <- fuel
-
-    }
-  } # End byPlot
   ## Pretty output
   tOut <- tOut %>%
     ungroup() %>%
@@ -645,6 +492,7 @@ dwm <- function(db,
     drop_na(grpBy) %>%
     arrange(YEAR) %>%
     as_tibble()
+
 
   # Return a spatial object
   if (!is.null(polys) & byPlot == FALSE) {
@@ -660,9 +508,10 @@ dwm <- function(db,
       tOut <- complete(tOut, nesting(!!!nospSym))
     }
 
-    suppressMessages({suppressWarnings({tOut <- left_join(tOut, polys, by = 'polyID') %>%
-      select(c('YEAR', grpByOrig, tNames, names(polys))) %>%
-      filter(!is.na(polyID))})})
+    suppressMessages({suppressWarnings({
+      tOut <- left_join(tOut, polys) %>%
+        select(c('YEAR', grpByOrig, tNames, names(polys))) %>%
+        filter(!is.na(polyID))})})
 
     ## Makes it horrible to work with as a dataframe
     if (returnSpatial == FALSE) tOut <- select(tOut, -c(geometry))
@@ -670,6 +519,7 @@ dwm <- function(db,
     polys <- as.data.frame(polys)
     tOut <- left_join(tOut, select(polys, -c(geometry)), by = 'polyID')
   }
+
 
   ## For spatial plots
   if (returnSpatial & byPlot) grpBy <- grpBy[grpBy %in% c('LAT', 'LON') == FALSE]
@@ -679,7 +529,14 @@ dwm <- function(db,
   # ## remove any duplicates in byPlot (artifact of END_INYR loop)
   if (byPlot) tOut <- unique(tOut)
   return(tOut)
-
 }
+
+
+
+
+
+
+
+
 
 
