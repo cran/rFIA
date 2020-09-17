@@ -103,7 +103,7 @@ vrHelper1 <- function(x, plts, db, grpBy, aGrpBy, byPlot){
     t <- data %>%
       mutate(YEAR = MEASYEAR) %>%
       distinct(PLT_CN, SUBP, TREE, ONEORTWO, .keep_all = TRUE) %>%
-      group_by(.dots = grpBy, PLT_CN, SUBP, TREE) %>%
+      group_by(.dots = grpBy[grpBy %in% c('SUBP', 'TREE') == FALSE], PLT_CN, SUBP, TREE) %>%
       summarize(d = sum(DIA * tDI, na.rm = TRUE),
                 ba = sum(BA * tDI, na.rm = TRUE),
                 baa = sum(TPAGROW_UNADJ * BA * tDI, na.rm = TRUE),
@@ -320,6 +320,8 @@ vrHelper2 <- function(x, popState, a, t, grpBy, aGrpBy, method){
               gaEst = unitMean(ESTN_METHOD, a, nh, w, gaStrat),
               bioEst = unitMean(ESTN_METHOD, a, nh, w, bioStrat),
               bioAEst = unitMean(ESTN_METHOD, a, nh, w, bioAStrat),
+
+              N = first(p2eu),
               #aEst = first(aEst),
               # Estimation of unit variance
               tVar = unitVarNew(method = 'var', ESTN_METHOD, a, nh, first(p2eu), w, tv, tStrat, tEst),

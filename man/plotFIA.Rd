@@ -95,13 +95,13 @@ Hunter Stanke and Andrew Finley
 }
 
 \examples{
-\donttest{
 ################### SPATIAL PLOTTING #############################
 ## Compute abundance estimates for live stems in Rhode Island
 ## for all available inventory years, summarized by counties and
 ## return a spatial object
 tpaRI <- tpa(fiaRI, polys = countiesRI, returnSpatial = TRUE)
 
+\dontrun{
 ## Produce animated plot
 plotFIA(tpaRI, y = TPA, animate = TRUE, legend.title = 'Abundance (TPA)')
 ## With a square root transform

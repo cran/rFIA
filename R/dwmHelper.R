@@ -10,9 +10,9 @@ dwmHelper1 <- function(x, plts, db, grpBy, byPlot){
   grpC <- names(db$COND)[names(db$COND) %in% grpBy & names(db$COND) %in% grpP == FALSE]
 
   ### Only joining tables necessary to produce plot level estimates, adjusted for non-response
-  data <- select(db$PLOT, c('PLT_CN', 'STATECD', 'MACRO_BREAKPOINT_DIA', 'INVYR', 'MEASYEAR', 'PLOT_STATUS_CD', grpP, 'aD_p', 'sp')) %>%
-    left_join(select(db$COND, c('PLT_CN', 'CONDPROP_UNADJ', 'PROP_BASIS', 'COND_STATUS_CD', 'CONDID', grpC, 'aD_c', 'landD')), by = c('PLT_CN')) %>%
-    left_join(select(db$COND_DWM_CALC, -c( 'STATECD', 'COUNTYCD', 'UNITCD', 'INVYR', 'MEASYEAR', 'PLOT', 'EVALID')), by = c('PLT_CN', 'CONDID')) #%>%
+  data <- db$PLOT %>%
+    left_join(db$COND, by = c('PLT_CN')) %>%
+    left_join(db$COND_DWM_CALC, by = c('PLT_CN', 'CONDID')) #%>%
     #filter(DIA >= 5)
 
   ## Comprehensive indicator function
@@ -219,6 +219,7 @@ dwmHelper2 <- function(x, popState, t, grpBy, method){
               cpEst = unitMean(ESTN_METHOD, a, nh, w, cpStrat),
               cEst = unitMean(ESTN_METHOD, a, nh, w, cStrat),
               plotIn = sum(plotIn, na.rm = TRUE),
+              N = first(p2eu),
               # Estimation of unit variance
               aVar = unitVarNew(method = 'var', ESTN_METHOD, a, nh, first(p2eu), w, av, aStrat, aEst),
               vsmVar = unitVarNew(method = 'var', ESTN_METHOD, a, nh, first(p2eu), w, vsmVar, vsmStrat, vsmEst),

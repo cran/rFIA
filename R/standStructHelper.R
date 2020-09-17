@@ -10,9 +10,9 @@ ssHelper1 <- function(x, plts, db, grpBy, byPlot){
   grpC <- names(db$COND)[names(db$COND) %in% grpBy & names(db$COND) %in% grpP == FALSE]
 
   ### Only joining tables necessary to produce plot level estimates, adjusted for non-response
-  data <- select(db$PLOT, c('PLT_CN', 'STATECD', 'MACRO_BREAKPOINT_DIA', 'INVYR', 'MEASYEAR', 'PLOT_STATUS_CD', grpP, 'aD_p', 'sp')) %>%
-    left_join(select(db$COND, c('PLT_CN', 'CONDPROP_UNADJ', 'PROP_BASIS', 'COND_STATUS_CD', 'CONDID', grpC, 'aD_c', 'landD')), by = c('PLT_CN')) %>%
-    left_join(select(db$TREE, c('PLT_CN', 'CONDID', 'DIA', 'TPA_UNADJ', 'CCLCD', 'SUBP', 'TREE')), by = c('PLT_CN', 'CONDID')) #%>%
+  data <- db$PLOT %>%
+    left_join(db$COND, by = c('PLT_CN')) %>%
+    left_join(db$TREE, by = c('PLT_CN', 'CONDID')) #%>%
     #filter(DIA >= 5)
 
    ## Comprehensive indicator function
@@ -119,6 +119,7 @@ ssHelper2 <- function(x, popState, t, grpBy, method){
               maEst = unitMean(ESTN_METHOD, a, nh,  w, maStrat),
               lEst = unitMean(ESTN_METHOD, a, nh,  w, lStrat),
               moEst = unitMean(ESTN_METHOD, a, nh,  w, moStrat),
+              N = first(p2eu),
               aVar = unitVarNew(method = 'var', ESTN_METHOD, a, nh, first(p2eu), w, av, aStrat, aEst),
               pVar = unitVarNew(method = 'var', ESTN_METHOD, a, nh, first(p2eu), w, pv, pStrat, pEst),
               maVar = unitVarNew(method = 'var', ESTN_METHOD, a, nh, first(p2eu), w, mav, maStrat, maEst),

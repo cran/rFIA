@@ -8,13 +8,22 @@ Load FIA database into R environment from local directory
 Loads FIA Datatables into R from .csv files stored in a local directory. If you have not previously downloaded FIA Data from the FIA Datamart, use \code{\link{getFIA}} to download data for your region of interest and load it into R. Capable of merging multiple state downloads of the FIA database for regional analysis. Simply store each set of state data, as downloaded from the FIA Datamart, in the same directory and hand to \code{readFIA}.}
 
 \usage{
-readFIA(dir, common = TRUE, tables = NULL, nCores = 1, ...)}
+readFIA(dir, common = TRUE, tables = NULL, states = NULL,
+        inMemory = TRUE, nCores = 1, ...)}
 
 \arguments{
   \item{dir}{directory where FIA Datatables are stored.}
+
   \item{common}{logical; if TRUE, only import most commonly used tables, including all required for \code{rFIA} functions (see Details for list of tables).}
+
   \item{tables}{character vector; names of specific tables to be imported (e.g. 'PLOT', 'TREE', 'COND', 'TREE_GRM_COMPONENT').}
+
+  \item{states}{character; state/ US territory abbreviations (e.g. 'AL', 'MI', etc.) indicating which state subsets to read. Data for each state must be in \code{dir}. Choose to read multiple states by passing character vector of state abbreviations (e.g. \code{states = c('RI', 'CT', 'MA')}). If \code{states = NULL}, data for all states within \code{dir} will be read in and merged into a regional database.}
+
+  \item{inMemory}{logical; should data be stored in-memory? If FALSE, data will be read in state-by-state when an estimator function is called (e.g., \code{tpa}). This conserves RAM and allows the user to to produce estimates using very large databases that does not all fit in memory at once.}
+
   \item{nCores}{numeric; number of cores to use for parallel implementation. Check available cores using \code{\link{detectCores}}. Default = 1, serial processing.}
+
   \item{\dots}{other arguments to pass to \code{\link{fread}}.}
 }
 
@@ -56,7 +65,7 @@ Alternatively, use \code{\link{getFIA}} to automate the download, reading, and s
 
 
 \examples{
-\donttest{
+\dontrun{\donttest{
 ## The following examples shows how you
 ## can take an existing in-memory FIA.Datbase,
 ## save it, and read it back in!
@@ -66,16 +75,18 @@ Alternatively, use \code{\link{getFIA}} to automate the download, reading, and s
 ## load into R, but don't save it anywhere yet
 db <- getFIA(states = 'RI')
 
+
+
 ## Now we write it all out
 ## Replace tempdir() with the path to your
 ## directory (where data will be saved)
 writeFIA(db, dir = tempdir())
-}
-\dontrun{
+
 
 ## Then read it back in with readFIA
 db <- readFIA(dir = tempdir())
-}
+
+}}
 
 }
 
