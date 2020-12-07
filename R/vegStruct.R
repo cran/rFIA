@@ -13,96 +13,69 @@ vegStructStarter <- function(x,
                             remote = NULL,
                             mr){
 
-  reqTables <- c('PLOT', 'P2VEG_SUBP_STRUCTURE', 'SUBP_COND', 'COND', 'POP_PLOT_STRATUM_ASSGN', 'POP_ESTN_UNIT', 'POP_EVAL',
+
+  ## Read required data, prep the database -------------------------------------
+  reqTables <- c('PLOT', 'P2VEG_SUBP_STRUCTURE', 'SUBP_COND', 'COND',
+                 'POP_PLOT_STRATUM_ASSGN', 'POP_ESTN_UNIT', 'POP_EVAL',
                  'POP_STRATUM', 'POP_EVAL_TYP', 'POP_EVAL_GRP')
 
-  if (remote){
-    ## Store the original parameters here
-    params <- db
-
-    ## Read in one state at a time
-    db <- readFIA(dir = db$dir, common = db$common,
-                  tables = reqTables, states = x, ## x is the vector of state names
-                  nCores = nCores)
-
-    ## If a clip was specified, run it now
-    if ('mostRecent' %in% names(params)){
-      db <- clipFIA(db, mostRecent = params$mostRecent,
-                    mask = params$mask, matchEval = params$matchEval,
-                    evalid = params$evalid, designCD = params$designCD,
-                    nCores = nCores)
-    }
-
-  } else {
-    ## Really only want the required tables
-    db <- db[names(db) %in% reqTables]
-  }
-
-
-
-  ## Need a plotCN, and a new ID
-  db$PLOT <- db$PLOT %>% mutate(PLT_CN = CN,
-                                pltID = paste(UNITCD, STATECD, COUNTYCD, PLOT, sep = '_'))
-
-  ## Reduce our sample right off the bat, only plots sampled for invasives
-  db$PLOT <- filter(db$PLOT, P2VEG_SAMPLING_STATUS_CD %in% 1:3)
-
-  ##  don't have to change original code
-  #grpBy_quo <- enquo(grpBy)
-
-  # Probably cheating, but it works
-  if (quo_name(grpBy_quo) != 'NULL'){
-    ## Have to join tables to run select with this object type
-    plt_quo <- filter(db$PLOT, !is.na(PLT_CN))
-    ## We want a unique error message here to tell us when columns are not present in data
-    d_quo <- tryCatch(
-      error = function(cnd) {
-        return(0)
-      },
-      plt_quo[10,] %>% # Just the first row
-        left_join(select(db$COND, PLT_CN, names(db$COND)[names(db$COND) %in% names(db$PLOT) == FALSE]), by = 'PLT_CN') %>%
-        select(!!grpBy_quo)
-    )
-
-    # If column doesnt exist, just returns 0, not a dataframe
-    if (is.null(nrow(d_quo))){
-      grpName <- quo_name(grpBy_quo)
-      stop(paste('Columns', grpName, 'not found in PLOT or COND tables. Did you accidentally quote the variables names? e.g. use grpBy = ECOSUBCD (correct) instead of grpBy = "ECOSUBCD". ', collapse = ', '))
-    } else {
-      # Convert to character
-      grpBy <- names(d_quo)
-    }
-  } else {
-    grpBy <- NULL
-  }
-
-
-  if (!is.null(polys) & first(first(class(polys))) %in% c('sf', 'SpatialPolygons', 'SpatialPolygonsDataFrame') == FALSE){
-    stop('polys must be spatial polygons object of class sp or sf. ')
-  }
-
-  if (landType %in% c('timber', 'forest') == FALSE){
-    stop('landType must be one of: "forest" or "timber".')
-  }
-  if (any(reqTables %in% names(db) == FALSE)){
-    missT <- reqTables[reqTables %in% names(db) == FALSE]
-    stop(paste('Tables', paste (as.character(missT), collapse = ', '), 'not found in object db.'))
-  }
-  if (str_to_upper(method) %in% c('TI', 'SMA', 'LMA', 'EMA', 'ANNUAL') == FALSE) {
-    warning(paste('Method', method, 'unknown. Defaulting to Temporally Indifferent (TI).'))
-  }
-
-  # I like a unique ID for a plot through time
-  if (byPlot) {grpBy <- c('pltID', grpBy)}
-  grpBy <- c(grpBy, 'LAYER', 'GROWTH_HABIT')
-  # Save original grpBy for pretty return with spatial objects
-  grpByOrig <- grpBy
+  ## If remote, read in state by state. Otherwise, drop all unnecessary tables
+  db <- readRemoteHelper(x, db, remote, reqTables, nCores)
 
   ## IF the object was clipped
   if ('prev' %in% names(db$PLOT)){
     ## Only want the current plots, no grm
     db$PLOT <- filter(db$PLOT, prev == 0)
   }
+
+  ## Handle TX issues - we only keep inventory years that are present in BOTH
+  ## EAST AND WEST TX
+  db <- handleTX(db)
+
+
+
+
+  ## Some warnings if inputs are bogus -----------------------------------------
+  if (!is.null(polys) &
+      first(class(polys)) %in%
+      c('sf', 'SpatialPolygons', 'SpatialPolygonsDataFrame') == FALSE){
+    stop('polys must be spatial polygons object of class sp or sf. ')
+  }
+  if (landType %in% c('timber', 'forest') == FALSE){
+    stop('landType must be one of: "forest" or "timber".')
+  }
+  if (any(reqTables %in% names(db) == FALSE)){
+    missT <- reqTables[reqTables %in% names(db) == FALSE]
+    stop(paste('Tables', paste (as.character(missT), collapse = ', '),
+               'not found in object db.'))
+  }
+  if (str_to_upper(method) %in% c('TI', 'SMA', 'LMA', 'EMA', 'ANNUAL') == FALSE) {
+    warning(paste('Method', method,
+                  'unknown. Defaulting to Temporally Indifferent (TI).'))
+  }
+
+
+  ## Prep other variables ------------------------------------------------------
+  ## Need a plotCN, and a new ID
+  db$PLOT <- db$PLOT %>%
+    mutate(PLT_CN = CN,
+           pltID = paste(UNITCD, STATECD, COUNTYCD, PLOT, sep = '_'))
+
+  ## Reduce our sample right off the bat, only plots sampled for veg
+  db$PLOT <- filter(db$PLOT, P2VEG_SAMPLING_STATUS_CD %in% 1:3)
+
+  ## Convert grpBy to character
+  grpBy <- grpByToChar(db[!c(names(db) %in% c('TREE'))], grpBy_quo)
+
+  # Save original grpBy for pretty return with spatial objects
+  grpByOrig <- grpBy
+
+
+  # I like a unique ID for a plot through time
+  if (byPlot) {grpBy <- c('pltID', grpBy)}
+
+  ## Add variables to grouping
+  grpBy <- c(grpBy, 'LAYER', 'GROWTH_HABIT')
 
   ## ADDING names of id columns for layer and growth habit
   db$P2VEG_SUBP_STRUCTURE <- db$P2VEG_SUBP_STRUCTURE %>%
@@ -120,246 +93,104 @@ vegStructStarter <- function(x,
                                     GROWTH_HABIT_CD == 'FB' ~ 'Forbs',
                                     GROWTH_HABIT_CD == 'GR' ~ 'Graminoids'))
 
-  ### DEAL WITH TEXAS
-  if (any(db$POP_EVAL$STATECD %in% 48)){
-    ## Will require manual updates, fix your shit texas
-    txIDS <- db$POP_EVAL %>%
-      filter(STATECD %in% 48) %>%
-      filter(END_INVYR < 2017) %>%
-      filter(END_INVYR > 2006) %>%
-      ## Removing any inventory that references east or west, sorry
-      filter(str_detect(str_to_upper(EVAL_DESCR), 'EAST', negate = TRUE) &
-               str_detect(str_to_upper(EVAL_DESCR), 'WEST', negate = TRUE))
-    db$POP_EVAL <- bind_rows(filter(db$POP_EVAL, !(STATECD %in% 48)), txIDS)
-  }
 
+  ## Intersect plots with polygons if polygons are given
+  if (!is.null(polys)){
 
-  ### AREAL SUMMARY PREP
-  if(!is.null(polys)) {
-    # # Convert polygons to an sf object
-    # polys <- polys %>%
-    #   as('sf')%>%
-    #   mutate_if(is.factor,
-    #             as.character)
-    # ## A unique ID
-    # polys$polyID <- 1:nrow(polys)
-    #
-    # # Add shapefile names to grpBy
+    ## Add shapefile names to grpBy
     grpBy = c(grpBy, 'polyID')
-
-    ## Make plot data spatial, projected same as polygon layer
-    pltSF <- select(db$PLOT, c('LON', 'LAT', pltID)) %>%
-      filter(!is.na(LAT) & !is.na(LON)) %>%
-      distinct(pltID, .keep_all = TRUE)
-    coordinates(pltSF) <- ~LON+LAT
-    proj4string(pltSF) <- '+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs'
-    pltSF <- as(pltSF, 'sf') %>%
-      st_transform(crs = st_crs(polys))
-
-    ## Split up polys
-    polyList <- split(polys, as.factor(polys$polyID))
-    suppressWarnings({suppressMessages({
-      ## Compute estimates in parallel -- Clusters in windows, forking otherwise
-      if (Sys.info()['sysname'] == 'Windows'){
-        cl <- makeCluster(nCores)
-        clusterEvalQ(cl, {
-          library(dplyr)
-          library(stringr)
-          library(rFIA)
-        })
-        out <- parLapply(cl, X = names(polyList), fun = areal_par, pltSF, polyList)
-        #stopCluster(cl) # Keep the cluster active for the next run
-      } else { # Unix systems
-        out <- mclapply(names(polyList), FUN = areal_par, pltSF, polyList, mc.cores = nCores)
-      }
-    })})
-    pltSF <- bind_rows(out)
-
-    # A warning
-    if (length(unique(pltSF$pltID)) < 1){
-      stop('No plots in db overlap with polys.')
-    }
-    ## Add polygon names to PLOT
-    db$PLOT <- db$PLOT %>%
-      left_join(select(pltSF, polyID, pltID), by = 'pltID')
-
-    # Test if any polygons cross state boundaries w/ different recent inventory years (continued w/in loop)
-    if ('mostRecent' %in% names(db) & length(unique(db$POP_EVAL$STATECD)) > 1){
-      mergeYears <- pltSF %>%
-        right_join(select(db$PLOT, PLT_CN, pltID), by = 'pltID') %>%
-        inner_join(select(db$POP_PLOT_STRATUM_ASSGN, c('PLT_CN', 'EVALID', 'STATECD')), by = 'PLT_CN') %>%
-        inner_join(select(db$POP_EVAL, c('EVALID', 'END_INVYR')), by = 'EVALID') %>%
-        group_by(polyID) %>%
-        summarize(maxYear = max(END_INVYR, na.rm = TRUE))
-    }
-
-    ## TO RETURN SPATIAL PLOTS
+    ## Do the intersection
+    db <- arealSumPrep2(db, grpBy, polys, nCores)
   }
+
+  ## If we want to return spatial plots
   if (byPlot & returnSpatial){
     grpBy <- c(grpBy, 'LON', 'LAT')
-  } # END AREAL
-
-
-  ## Build domain indicator function which is 1 if observation meets criteria, and 0 otherwise
-  # Land type domain indicator
-  if (tolower(landType) == 'forest'){
-    db$COND$landD <- ifelse(db$COND$COND_STATUS_CD == 1, 1, 0)
-  } else if (tolower(landType) == 'timber'){
-    db$COND$landD <- ifelse(db$COND$COND_STATUS_CD == 1 & db$COND$SITECLCD %in% c(1, 2, 3, 4, 5, 6) & db$COND$RESERVCD == 0, 1, 0)
-  } else if (tolower(landType) == 'all') {
-    db$COND$landD <- 1
   }
 
-  # update spatial domain indicator
+
+
+
+
+
+  ## Build a domain indicator for each observation (1 or 0) --------------------
+  ## Land type
+  db$COND$landD <- landTypeDomain(landType,
+                                  db$COND$COND_STATUS_CD,
+                                  db$COND$SITECLCD,
+                                  db$COND$RESERVCD)
+
+  ## Spatial boundary
   if(!is.null(polys)){
-    db$PLOT$sp <- ifelse(db$PLOT$pltID %in% pltSF$pltID, 1, 0)
+    db$PLOT$sp <- ifelse(!is.na(db$PLOT$polyID), 1, 0)
   } else {
     db$PLOT$sp <- 1
   }
 
   # User defined domain indicator for area (ex. specific forest type)
-  pcEval <- left_join(db$PLOT, select(db$COND, -c('STATECD', 'UNITCD', 'COUNTYCD', 'INVYR', 'PLOT')), by = 'PLT_CN')
-  #areaDomain <- substitute(areaDomain)
-  pcEval$aD <- rlang::eval_tidy(areaDomain, pcEval) ## LOGICAL, THIS IS THE DOMAIN INDICATOR
-  if(!is.null(pcEval$aD)) pcEval$aD[is.na(pcEval$aD)] <- 0 # Make NAs 0s. Causes bugs otherwise
-  if(is.null(pcEval$aD)) pcEval$aD <- 1 # IF NULL IS GIVEN, THEN ALL VALUES TRUE
-  pcEval$aD <- as.numeric(pcEval$aD)
-  db$COND <- left_join(db$COND, select(pcEval, c('PLT_CN', 'CONDID', 'aD')), by = c('PLT_CN', 'CONDID')) %>%
-    mutate(aD_c = aD)
-  aD_p <- pcEval %>%
-    group_by(PLT_CN) %>%
-    summarize(aD_p = as.numeric(any(aD > 0)))
-  db$PLOT <- left_join(db$PLOT, aD_p, by = 'PLT_CN')
-  rm(pcEval)
+  db <- udAreaDomain(db, areaDomain)
 
 
-  ### Snag the EVALIDs that are needed
-  db$POP_EVAL <- db$POP_EVAL %>%
-    select('CN', 'END_INVYR', 'EVALID', 'ESTN_METHOD') %>%
-    inner_join(select(db$POP_EVAL_TYP, c('EVAL_CN', 'EVAL_TYP')), by = c('CN' = 'EVAL_CN')) %>%
-    filter(EVAL_TYP == 'EXPCURR') %>%
-    filter(!is.na(END_INVYR) & !is.na(EVALID) & END_INVYR >= 2003) %>%
-    distinct(END_INVYR, EVALID, .keep_all = TRUE)# %>%
-  #group_by(END_INVYR) %>%
-  #summarise(id = list(EVALID)
 
-  ## If a most-recent subset, make sure that we don't get two reporting years in
-  ## western states
-  if (mr) {
-    db$POP_EVAL <- db$POP_EVAL %>%
-      group_by(EVAL_TYP) %>%
-      filter(END_INVYR == max(END_INVYR, na.rm = TRUE))
+
+
+
+  ## Handle population tables --------------------------------------------------
+  ## Filtering out all inventories that are not relevant to the current estimation
+  ## type. If using estimator other than TI, handle the differences in P2POINTCNT
+  ## and in assigning YEAR column (YEAR = END_INVYR if method = 'TI')
+  pops <- handlePops(db, evalType = c('EXPCURR'), method, mr)
+
+  ## A lot of states do their stratification in such a way that makes it impossible
+  ## to estimate variance of annual panels w/ post-stratified estimator. That is,
+  ## the number of plots within a panel within an stratum is less than 2. When
+  ## this happens, merge strata so that all have at least two obs
+  if (str_to_upper(method) != 'TI') {
+    pops <- mergeSmallStrata(db, pops)
   }
 
-  ## Make an annual panel ID, associated with an INVYR
-
-  ### The population tables
-  pops <- select(db$POP_EVAL, c('EVALID', 'ESTN_METHOD', 'CN', 'END_INVYR')) %>%
-    rename(EVAL_CN = CN) %>%
-    left_join(select(db$POP_ESTN_UNIT, c('CN', 'EVAL_CN', 'AREA_USED', 'P1PNTCNT_EU')), by = c('EVAL_CN')) %>%
-    rename(ESTN_UNIT_CN = CN) %>%
-    left_join(select(db$POP_STRATUM, c('ESTN_UNIT_CN', 'EXPNS', 'P2POINTCNT', 'CN', 'P1POINTCNT', 'ADJ_FACTOR_SUBP', 'ADJ_FACTOR_MICR', "ADJ_FACTOR_MACR")), by = c('ESTN_UNIT_CN')) %>%
-    rename(STRATUM_CN = CN) %>%
-    left_join(select(db$POP_PLOT_STRATUM_ASSGN, c('STRATUM_CN', 'PLT_CN', 'INVYR', 'STATECD')), by = 'STRATUM_CN') %>%
-    ungroup() %>%
-    mutate_if(is.factor,
-              as.character)
 
 
-  ## Need to update the P2POINTCNT column since we aren't trying
-  ## to estimate forest area -- smaller sample size needs to be reflected
-  pops <- pops %>%
-    filter(pops$PLT_CN %in% db$PLOT$PLT_CN)
-
-  p2 <- pops %>%
-    group_by(ESTN_UNIT_CN, STRATUM_CN) %>%
-    summarize(P2POINTCNT = n())
-
-  pops <- pops %>%
-    select(-c(P2POINTCNT)) %>%
-    left_join(p2, by = c('ESTN_UNIT_CN', 'STRATUM_CN'))
 
 
-  ### Which estimator to use?
-  if (str_to_upper(method) %in% c('ANNUAL')){
-    ## Want to use the year where plots are measured, no repeats
-    ## Breaking this up into pre and post reporting becuase
-    ## Estimation units get weird on us otherwise
-    popOrig <- pops
-    pops <- pops %>%
-      group_by(STATECD) %>%
-      filter(END_INVYR == INVYR) %>%
-      ungroup()
-
-    prePops <- popOrig %>%
-      group_by(STATECD) %>%
-      filter(INVYR < min(END_INVYR, na.rm = TRUE)) %>%
-      distinct(PLT_CN, .keep_all = TRUE) %>%
-      ungroup()
-
-    pops <- bind_rows(pops, prePops) %>%
-      mutate(YEAR = INVYR)
-
-  } else {     # Otherwise temporally indifferent
-    pops <- rename(pops, YEAR = END_INVYR)
-  }
-
-  ## P2POINTCNT column is NOT consistent for annnual estimates, plots
-  ## within individual strata and est units are related to different INVYRs
-  p2_INVYR <- pops %>%
-    group_by(ESTN_UNIT_CN, STRATUM_CN, INVYR) %>%
-    summarize(P2POINTCNT_INVYR = length(unique(PLT_CN)))
-  ## Want a count of p2 points / eu, gets screwed up with grouping below
-  p2eu_INVYR <- p2_INVYR %>%
-    distinct(ESTN_UNIT_CN, STRATUM_CN, INVYR, .keep_all = TRUE) %>%
-    group_by(ESTN_UNIT_CN, INVYR) %>%
-    summarize(p2eu_INVYR = sum(P2POINTCNT_INVYR, na.rm = TRUE))
-  p2eu <- pops %>%
-    distinct(ESTN_UNIT_CN, STRATUM_CN, .keep_all = TRUE) %>%
-    group_by(ESTN_UNIT_CN) %>%
-    summarize(p2eu = sum(P2POINTCNT, na.rm = TRUE))
-
-  ## Rejoin
-  pops <- pops %>%
-    left_join(p2_INVYR, by = c('ESTN_UNIT_CN', 'STRATUM_CN', 'INVYR')) %>%
-    left_join(p2eu_INVYR, by = c('ESTN_UNIT_CN', 'INVYR')) %>%
-    left_join(p2eu, by = 'ESTN_UNIT_CN')
-
-
-  ## Recode a few of the estimation methods to make things easier below
-  pops$ESTN_METHOD = recode(.x = pops$ESTN_METHOD,
-                            `Post-Stratification` = 'strat',
-                            `Stratified random sampling` = 'strat',
-                            `Double sampling for stratification` = 'double',
-                            `Simple random sampling` = 'simple',
-                            `Subsampling units of unequal size` = 'simple')
-
-  # Seperate area grouping names, (ex. TPA red oak in total land area of ingham county, rather than only area where red oak occurs)
-  if (!is.null(polys)){
-    aGrpBy <- c(grpBy[grpBy %in% names(db$PLOT) | grpBy %in% names(db$COND) | grpBy %in% names(pltSF)])
-  } else {
-    aGrpBy <- c(grpBy[grpBy %in% names(db$PLOT) | grpBy %in% names(db$COND)])
-  }
-
+  ## Slim down the database for we hand it off to the estimators ---------------
+  ## Reduces memory requirements and speeds up processing ----------------------
 
   ## Only the necessary plots for EVAL of interest
   db$PLOT <- filter(db$PLOT, PLT_CN %in% pops$PLT_CN)
 
-  #plts <- split(db$PLOT, as.factor(db$PLOT$STATECD))
-
+  ## Narrow up the tables to the necessary variables
+  ## Which grpByNames are in which table? Helps us subset below
   grpP <- names(db$PLOT)[names(db$PLOT) %in% grpBy]
-  grpC <- names(db$COND)[names(db$COND) %in% grpBy & names(db$COND) %in% grpP == FALSE]
+  grpC <- names(db$COND)[names(db$COND) %in% grpBy &
+                           !c(names(db$COND) %in% grpP)]
 
-  ### Only joining tables necessary to produce plot level estimates, adjusted for non-response
-  db$PLOT <- select(db$PLOT, c('PLT_CN', 'STATECD', 'COUNTYCD', 'MACRO_BREAKPOINT_DIA', 'INVYR', 'MEASYEAR', 'PLOT_STATUS_CD', 'INVASIVE_SAMPLING_STATUS_CD', grpP, 'aD_p', 'sp'))
-  db$COND <- select(db$COND, c('PLT_CN', 'PROP_BASIS', 'CONDPROP_UNADJ', 'COND_STATUS_CD', 'CONDID', grpC, 'aD_c', 'landD'))
-  db$SUBP_COND <- select(db$SUBP_COND, c(PLT_CN, SUBP, CONDID, SUBPCOND_PROP))
-  db$P2VEG_SUBP_STRUCTURE <- select(db$P2VEG_SUBP_STRUCTURE, c('PLT_CN', 'COVER_PCT', 'SUBP', 'CONDID', 'LAYER', 'GROWTH_HABIT'))
-  #filter(DIA >= 5)
+  ### Only joining tables necessary to produce plot level estimates
+  db$PLOT <- select(db$PLOT, c('PLT_CN', 'STATECD', 'MACRO_BREAKPOINT_DIA',
+                               'INVYR', 'MEASYEAR', 'PLOT_STATUS_CD',
+                               all_of(grpP), 'aD_p', 'sp', 'COUNTYCD'))
+  db$COND <- select(db$COND, c('PLT_CN', 'CONDPROP_UNADJ', 'PROP_BASIS',
+                               'COND_STATUS_CD', 'CONDID',
+                               all_of(grpC), 'aD_c', 'landD')) %>%
+    filter(PLT_CN %in% db$PLOT$PLT_CN)
+  db$SUBP_COND <- select(db$SUBP_COND, c(PLT_CN, SUBP, CONDID, SUBPCOND_PROP))%>%
+    filter(PLT_CN %in% db$PLOT$PLT_CN)
+  db$P2VEG_SUBP_STRUCTURE <- select(db$P2VEG_SUBP_STRUCTURE,
+                                    c('PLT_CN', 'COVER_PCT', 'SUBP', 'CONDID',
+                                      'LAYER', 'GROWTH_HABIT')) %>%
+    filter(PLT_CN %in% db$PLOT$PLT_CN)
 
-  ## Merging state and county codes
+  # Separate area grouping names from tree grouping names
+  if (!is.null(polys)){
+    aGrpBy <- grpBy[grpBy %in% c(names(db$PLOT), names(db$COND), names(polys))]
+  } else {
+    aGrpBy <- grpBy[grpBy %in% c(names(db$PLOT), names(db$COND))]
+  }
+
+
+  ## Compute plot-level summaries ----------------------------------------------
+  ## An iterator for plot-level summaries
   plts <- split(db$PLOT, as.factor(paste(db$PLOT$COUNTYCD, db$PLOT$STATECD, sep = '_')))
-
   suppressWarnings({
     ## Compute estimates in parallel -- Clusters in windows, forking otherwise
     if (Sys.info()['sysname'] == 'Windows'){
@@ -369,14 +200,24 @@ vegStructStarter <- function(x,
         library(stringr)
         library(rFIA)
       })
-      out <- parLapply(cl, X = names(plts), fun = vegStructHelper1, plts, db, grpBy, aGrpBy, byPlot)
+      out <- parLapply(cl, X = names(plts), fun = vegStructHelper1, plts,
+                       db[names(db) %in% c('COND', 'SUBP_COND', 'P2VEG_SUBP_STRUCTURE')],
+                       grpBy, aGrpBy, byPlot)
       #stopCluster(cl) # Keep the cluster active for the next run
     } else { # Unix systems
-      out <- mclapply(names(plts), FUN = vegStructHelper1, plts, db, grpBy, aGrpBy, byPlot, mc.cores = nCores)
+      out <- mclapply(names(plts), FUN = vegStructHelper1, plts,
+                      db[names(db) %in% c('COND', 'SUBP_COND', 'P2VEG_SUBP_STRUCTURE')],
+                      grpBy, aGrpBy, byPlot, mc.cores = nCores)
     }
   })
 
 
+
+
+
+
+  ## If byPlot, return plot-level estimates ------------------------------------
+  ## Otherwise continue to population estimation -------------------------------
   if (byPlot){
     ## back to dataframes
     out <- unlist(out, recursive = FALSE)
@@ -392,42 +233,24 @@ vegStructStarter <- function(x,
     }
 
     out <- list(tEst = tOut, grpBy = grpBy, aGrpBy = aGrpBy, grpByOrig = grpByOrig)
-    ## Population estimation
+
+  ## Population estimation
   } else {
     ## back to dataframes
     out <- unlist(out, recursive = FALSE)
     a <- bind_rows(out[names(out) == 'a'])
     t <- bind_rows(out[names(out) == 't'])
 
-
     ## Adding YEAR to groups
     grpBy <- c('YEAR', grpBy)
     aGrpBy <- c('YEAR', aGrpBy)
 
-
-    ## Splitting up by STATECD and groups of 25 ESTN_UNIT_CNs
-    #estunit <- distinct(pops, ESTN_UNIT_CN) #%>%
-    #mutate(estID)
-
-    #estID <- seq(1, nrow(estunit), 50)
-    #estunit$estID <- rep_len(estID, length.out = nrow(estunit))
-    #pops <- pops %>%
-    #  left_join(estunit, by = 'ESTN_UNIT_CN') #%>%
-    #mutate(estBreaks = )
-
-    #popState <- split(pops, as.factor(pops$estID))
+    ## An iterator for population estimation
     popState <- split(pops, as.factor(pops$STATECD))
-    #
+
     suppressWarnings({
       ## Compute estimates in parallel -- Clusters in windows, forking otherwise
       if (Sys.info()['sysname'] == 'Windows'){
-        ## Use the same cluster as above
-        # cl <- makeCluster(nCores)
-        # clusterEvalQ(cl, {
-        #   library(dplyr)
-        #   library(stringr)
-        #   library(rFIA)
-        # })
         out <- parLapply(cl, X = names(popState), fun = vegStructHelper2, popState, a, t, grpBy, aGrpBy, method)
         stopCluster(cl)
       } else { # Unix systems
@@ -440,107 +263,50 @@ vegStructStarter <- function(x,
     tEst <- bind_rows(out[names(out) == 'tEst'])
 
 
-    ##### ----------------- MOVING AVERAGES
+
+    ## Compute moving average weights if not TI ----------------------------------
     if (str_to_upper(method) %in% c("SMA", 'EMA', 'LMA')){
-      ### ---- SIMPLE MOVING AVERAGE
-      if (str_to_upper(method) == 'SMA'){
-        ## Assuming a uniform weighting scheme
-        wgts <- pops %>%
-          group_by(ESTN_UNIT_CN) %>%
-          summarize(wgt = 1 / length(unique(INVYR)))
 
-        aEst <- left_join(aEst, wgts, by = 'ESTN_UNIT_CN')
-        tEst <- left_join(tEst, wgts, by = 'ESTN_UNIT_CN')
+      ## Compute the weights
+      wgts <- maWeights(pops, method, lambda)
 
-        #### ----- Linear MOVING AVERAGE
-      } else if (str_to_upper(method) == 'LMA'){
-        wgts <- pops %>%
-          distinct(YEAR, ESTN_UNIT_CN, INVYR, .keep_all = TRUE) %>%
-          arrange(YEAR, ESTN_UNIT_CN, INVYR) %>%
-          group_by(as.factor(YEAR), as.factor(ESTN_UNIT_CN)) %>%
-          mutate(rank = min_rank(INVYR))
-
-        ## Want a number of INVYRs per EU
-        neu <- wgts %>%
-          group_by(ESTN_UNIT_CN) %>%
-          summarize(n = sum(rank, na.rm = TRUE))
-
-        ## Rejoining and computing wgts
-        wgts <- wgts %>%
-          left_join(neu, by = 'ESTN_UNIT_CN') %>%
-          mutate(wgt = rank / n) %>%
-          ungroup() %>%
-          select(ESTN_UNIT_CN, INVYR, wgt)
-
-        aEst <- left_join(aEst, wgts, by = c('ESTN_UNIT_CN', 'INVYR'))
-        tEst <- left_join(tEst, wgts, by = c('ESTN_UNIT_CN', 'INVYR'))
-
-        #### ----- EXPONENTIAL MOVING AVERAGE
-      } else if (str_to_upper(method) == 'EMA'){
-        wgts <- pops %>%
-          distinct(YEAR, ESTN_UNIT_CN, INVYR, .keep_all = TRUE) %>%
-          arrange(YEAR, ESTN_UNIT_CN, INVYR) %>%
-          group_by(as.factor(YEAR), as.factor(ESTN_UNIT_CN)) %>%
-          mutate(rank = min_rank(INVYR))
-
-
-        if (length(lambda) < 2){
-          ## Want sum of weighitng functions
-          neu <- wgts %>%
-            mutate(l = lambda) %>%
-            group_by(ESTN_UNIT_CN) %>%
-            summarize(l = 1-first(lambda),
-                      sumwgt = sum(l*(1-l)^(1-rank), na.rm = TRUE))
-
-          ## Rejoining and computing wgts
-          wgts <- wgts %>%
-            left_join(neu, by = 'ESTN_UNIT_CN') %>%
-            mutate(wgt = l*(1-l)^(1-rank) / sumwgt) %>%
-            ungroup() %>%
-            select(ESTN_UNIT_CN, INVYR, wgt)
-        } else {
-          grpBy <- c('lambda', grpBy)
-          aGrpBy <- c('lambda', aGrpBy)
-          ## Duplicate weights for each level of lambda
-          yrWgts <- list()
-          for (i in 1:length(unique(lambda))) {
-            yrWgts[[i]] <- mutate(wgts, lambda = lambda[i])
-          }
-          wgts <- bind_rows(yrWgts)
-          ## Want sum of weighitng functions
-          neu <- wgts %>%
-            group_by(lambda, ESTN_UNIT_CN) %>%
-            summarize(l = 1-first(lambda),
-                      sumwgt = sum(l*(1-l)^(1-rank), na.rm = TRUE))
-
-          ## Rejoining and computing wgts
-          wgts <- wgts %>%
-            left_join(neu, by = c('lambda', 'ESTN_UNIT_CN')) %>%
-            mutate(wgt = l*(1-l)^(1-rank) / sumwgt) %>%
-            ungroup() %>%
-            select(lambda, ESTN_UNIT_CN, INVYR, wgt)
-        }
-
-        aEst <- left_join(aEst, wgts, by = c('ESTN_UNIT_CN', 'INVYR'))
-        tEst <- left_join(tEst, wgts, by = c('ESTN_UNIT_CN', 'INVYR'))
-
+      ## If moving average ribbons, add lambda to grpBy for easier summary
+      if (str_to_upper(method) == 'EMA' & length(lambda) > 1){
+        grpBy <- c('lambda', grpBy)
+        aGrpBy <- c('lambda', aGrpBy)
       }
 
-      ### Applying the weights
-      # Area
-      aEst <- aEst %>%
-        mutate_at(vars(aEst), ~(.*wgt)) %>%
-        mutate_at(vars(aVar), ~(.*(wgt^2))) %>%
-        group_by(ESTN_UNIT_CN, .dots = aGrpBy) %>%
-        summarize_at(vars(aEst:plotIn_AREA), sum, na.rm = TRUE)
 
-      ### Applying the weights
-      # Area
+      ## Apply the weights
+      if (str_to_upper(method) %in% c('LMA', 'EMA')){
+        joinCols <- c('YEAR', 'STATECD', 'INVYR')
+      } else {
+        joinCols <- c('YEAR', 'STATECD')
+      }
+      aEst <- aEst %>%
+        left_join(select(db$POP_ESTN_UNIT, CN, STATECD), by = c('ESTN_UNIT_CN' = 'CN')) %>%
+        left_join(wgts, by = joinCols) %>%
+        mutate(across(aEst, ~(.*wgt))) %>%
+        mutate(across(aVar, ~(.*(wgt^2)))) %>%
+        group_by(ESTN_UNIT_CN, .dots = aGrpBy) %>%
+        summarize(across(aEst:plotIn_AREA, sum, na.rm = TRUE))
       tEst <- tEst %>%
-        mutate_at(vars(iEst), ~(.*wgt)) %>%
-        mutate_at(vars(iVar:cvEst_i), ~(.*(wgt^2))) %>%
+        left_join(select(db$POP_ESTN_UNIT, CN, STATECD), by = c('ESTN_UNIT_CN' = 'CN')) %>%
+        left_join(wgts, by = joinCols) %>%
+        mutate(across(cEst, ~(.*wgt))) %>%
+        mutate(across(cVar:cvEst_c, ~(.*(wgt^2)))) %>%
         group_by(ESTN_UNIT_CN, .dots = grpBy) %>%
-        summarize_at(vars(cEst:cvEst_c), sum, na.rm = TRUE)
+        summarize(across(cEst:cvEst_c, sum, na.rm = TRUE))
+
+
+
+      ## If using an ANNUAL estimator --------------------------------------------
+    } else if (str_to_upper(method) == 'ANNUAL') {
+
+      # If INVYR is in YEAR, choose the estimates when INVYR == YEAR
+      # Otherwise, choose the estimates produced with the most plots
+      aEst <- filterAnnual(aEst, aGrpBy, plotIn_AREA, db$POP_ESTN_UNIT)
+      tEst <- filterAnnual(tEst, grpBy, plotIn_VEG, db$POP_ESTN_UNIT)
     }
 
     out <- list(tEst = tEst, aEst = aEst, grpBy = grpBy, aGrpBy = aGrpBy, grpByOrig = grpByOrig)
@@ -571,50 +337,16 @@ vegStruct <- function(db,
   grpBy_quo <- rlang::enquo(grpBy)
   areaDomain <- rlang::enquo(areaDomain)
 
-  ### Is DB remote?
+
+  ## Handle iterator if db is remote
   remote <- ifelse(class(db) == 'Remote.FIA.Database', 1, 0)
-  if (remote){
-
-    iter <- db$states
-
-    ## In memory
-  } else {
-    ## Some warnings
-    if (class(db) != "FIA.Database"){
-      stop('db must be of class "FIA.Database". Use readFIA() to load your FIA data.')
-    }
-
-    ## an iterator for remote
-    iter <- 1
-
-  }
+  iter <- remoteIter(db, remote)
 
   ## Check for a most recent subset
-  if (remote){
-    if ('mostRecent' %in% names(db)){
-      mr = db$mostRecent # logical
-    } else {
-      mr = FALSE
-    }
-    ## In-memory
-  } else {
-    if ('mostRecent' %in% names(db)){
-      mr = TRUE
-    } else {
-      mr = FALSE
-    }
-  }
+  mr <- checkMR(db, remote)
 
-  ### AREAL SUMMARY PREP
-  if(!is.null(polys)) {
-    # Convert polygons to an sf object
-    polys <- polys %>%
-      as('sf')%>%
-      mutate_if(is.factor,
-                as.character)
-    ## A unique ID
-    polys$polyID <- 1:nrow(polys)
-  }
+  ## prep for areal summary
+  polys <- arealSumPrep1(polys)
 
 
 
@@ -635,44 +367,28 @@ vegStruct <- function(db,
 
 
 
+
+  ## Plot-level estimates
   if (byPlot){
+
+    ## Name change for consistency below - awkward, I know. I don't care.
     tOut <- tEst
 
     ## Population estimates
   } else {
 
+    ## Combine most-recent population estimates across states with potentially
+    ## different reporting schedules, i.e., if 2016 is most recent in MI and 2017 is
+    ## most recent in WI, combine them and label as 2017
+    if (mr) {
+      tEst <- combineMR(tEst, grpBy)
+      aEst <- combineMR(aEst, aGrpBy)
+    }
 
-    suppressMessages({suppressWarnings({
-      ## If a clip was specified, handle the reporting years
-      if (mr){
-        ## If a most recent subset, ignore differences in reporting years across states
-        ## instead combine most recent information from each state
-        # ID mr years by group
-        maxyearsT <- tEst %>%
-          select(grpBy) %>%
-          group_by(.dots = grpBy[!c(grpBy %in% 'YEAR')]) %>%
-          summarise(YEAR = max(YEAR, na.rm = TRUE))
-        maxyearsA <- aEst %>%
-          select(aGrpBy) %>%
-          group_by(.dots = aGrpBy[!c(aGrpBy %in% 'YEAR')]) %>%
-          summarise(YEAR = max(YEAR, na.rm = TRUE))
 
-        # Combine estimates
-        aEst <- aEst %>%
-          ungroup() %>%
-          select(-c(YEAR)) %>%
-          left_join(maxyearsA, by = aGrpBy[!c(aGrpBy %in% 'YEAR')])
-        tEst <- tEst %>%
-          ungroup() %>%
-          select(-c(YEAR)) %>%
-          left_join(maxyearsT, by = grpBy[!c(grpBy %in% 'YEAR')])
 
-      }
-    })})
-
+    ## Totals and ratios -------------------------------------------------------
     suppressWarnings({
-      ##---------------------  TOTALS and RATIOS
-      # Area
       aTotal <- aEst %>%
         group_by(.dots = aGrpBy) %>%
         summarize(AREA_TOTAL = sum(aEst, na.rm = TRUE),
@@ -680,7 +396,6 @@ vegStruct <- function(db,
                   AREA_TOTAL_SE = sqrt(aVar) / AREA_TOTAL * 100,
                   AREA_TOTAL_VAR = aVar,
                   nPlots_AREA = sum(plotIn_AREA, na.rm = TRUE))
-      # Tree
       tOut <- tEst %>%
         group_by(.dots = grpBy) %>%
         #left_join(aTotal, by = c(aGrpBy)) %>%
@@ -737,38 +452,29 @@ vegStruct <- function(db,
     arrange(YEAR) %>%
     as_tibble()
 
-  # Return a spatial object
-  if (!is.null(polys) & byPlot == FALSE) {
-    ## NO IMPLICIT NA
-    nospGrp <- unique(grpBy[grpBy %in% c('SPCD', 'SYMBOL', 'COMMON_NAME', 'SCIENTIFIC_NAME') == FALSE])
-    nospSym <- syms(nospGrp)
-    tOut <- complete(tOut, !!!nospSym)
-    ## If species, we don't want unique combos of variables related to same species
-    ## but we do want NAs in polys where species are present
-    if (length(nospGrp) < length(grpBy)){
-      spGrp <- unique(grpBy[grpBy %in% c('SPCD', 'SYMBOL', 'COMMON_NAME', 'SCIENTIFIC_NAME')])
-      spSym <- syms(spGrp)
-      tOut <- complete(tOut, nesting(!!!nospSym))
-    }
+  ## Make implicit NA explicit for spatial summaries
+  ## Not sure if I like this or not, but I'm going with it for now
+  tOut <- prettyNamesSF(tOut, polys, byPlot, grpBy, grpByOrig, tNames, returnSpatial)
 
-    suppressMessages({suppressWarnings({tOut <- left_join(tOut, polys, by = 'polyID') %>%
-      select(c('YEAR', grpByOrig, tNames, names(polys))) %>%
-      filter(!is.na(polyID) & !is.na(nPlots_AREA))})})
-
-    ## Makes it horrible to work with as a dataframe
-    if (returnSpatial == FALSE) tOut <- select(tOut, -c(geometry))
-  } else if (!is.null(polys) & byPlot){
-    polys <- as.data.frame(polys)
-    tOut <- left_join(tOut, select(polys, -c(geometry)), by = 'polyID')
-  }
 
   ## For spatial plots
   if (returnSpatial & byPlot) grpBy <- grpBy[grpBy %in% c('LAT', 'LON') == FALSE]
 
   ## Above converts to tibble
   if (returnSpatial) tOut <- st_sf(tOut)
-  # ## remove any duplicates in byPlot (artifact of END_INYR loop)
-  if (byPlot) tOut <- unique(tOut)
+
+  ## remove any duplicates in byPlot
+  ## Also make PLOT_STATUS_CD more informative
+  if (byPlot) {
+    tOut <- unique(tOut)
+    tOut <- tOut %>%
+      mutate(PLOT_STATUS = case_when(is.na(PLOT_STATUS_CD) ~ NA_character_,
+                                     PLOT_STATUS_CD == 1 ~ 'Forest',
+                                     PLOT_STATUS_CD == 2 ~ 'Non-forest',
+                                     PLOT_STATUS_CD == 3 ~ 'Non-sampled')) %>%
+      relocate(PLOT_STATUS, .after = PLOT_STATUS_CD)
+  }
+
   return(tOut)
 
 }
