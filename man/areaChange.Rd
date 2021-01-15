@@ -1,23 +1,20 @@
-\name{biomass}
-\alias{biomass}
-
-\title{Estimate tree biomass and carbon stocks from the FIADB}
-
+\name{areaChange}
+\alias{areaChange}
+%- Also NEED an '\alias' for EACH other topic documented here.
+\title{Estimate land area change from the FIADB}
 \description{
-\lifecycle{maturing}
-Produces estimates of tree biomass and carbon on a per acre basis from FIA data, along with population estimates for each variable. Estimates can be produced for regions defined within the FIA Database (e.g. counties), at the plot level, or within user-defined areal units. Options to group estimates by species, size class, and other variables defined in the FIADB. If multiple reporting years (EVALIDs) are included in the data, estimates will be output as a time series. If multiple states are represented by the data, estimates will be output for the full region (all area combined), unless specified otherwise (e.g. \code{grpBy = STATECD}).
-}
+\lifecycle{experimental}
+Produces estimates of annual net and component change in land area (acreage) from FIA data. Estimates can be produced for regions defined within the FIA Database (e.g. counties), at the plot level, or within user-defined areal units. Options to group estimates by species, size class, and other variables defined in the FIADB. If multiple reporting years (EVALIDs) are included in the data, estimates will be output as a time series. If multiple states are represented by the data, estimates will be output for the full region (all area combined), unless specified otherwise (e.g. grpBy = STATECD). }
 
 
 \usage{
-biomass(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
-        bySpecies = FALSE, bySizeClass = FALSE, byComponent = FALSE,
-        landType = "forest", treeType = "live", method = "TI",
-        lambda = 0.5, treeDomain = NULL, areaDomain = NULL,
-        totals = FALSE, variance = FALSE, byPlot = FALSE,
-        component = "AG", nCores = 1)
+areaChange(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
+           byLandType = FALSE, landType = "forest", method = "TI",
+           lambda = 0.5, treeDomain = NULL, areaDomain = NULL,
+           totals = FALSE, variance = FALSE, byPlot = FALSE,
+           chngType = 'net', nCores = 1)
 }
-
+%- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{db}{\code{FIA.Database} or \code{Remote.FIA.Database} object produced from \code{\link{readFIA}} or \code{\link{getFIA}}. If a \code{Remote.FIA.Database}, data will be read in and processed state-by-state to conserve RAM (see details for an example).}
 
@@ -27,23 +24,17 @@ biomass(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
 
   \item{returnSpatial}{logical; if TRUE, merge population estimates with \code{polys} and return as \code{sf} multipolygon object. When \code{byPlot = TRUE}, return plot-level estimates as \code{sf} spatial points.}
 
-\item{bySpecies}{logical; if TRUE, returns estimates grouped by species.}
+  \item{byLandType}{logical; if TRUE, return estimates grouped by individual land type classes ("timberland", "non-timberland forest", "non-forest", and "water").}
 
-  \item{bySizeClass}{logical; if TRUE, returns estimates grouped by size class (2-inch intervals, see \code{\link{makeClasses}} to compute different size class intervals).}
-
-  \item{byComponent}{logical; if TRUE, returns estimates grouped by the following biomass components: foliage, tops and limbs, merchantable bole, stump, coarse roots, sapling, and woodland species.}
-
-  \item{landType}{character ("forest" or "timber"); Type of land that estimates will be produced for. Timberland is a subset of forestland (default) which has high site potential and non-reserve status (see details).}
-
-  \item{treeType}{character ("all", "live", "dead", or "gs""); Type of tree that estimates will be produced for. All (default) includes all stems, live and dead, greater than 1 in. DBH. Live/Dead includes all stems greater than 1 in. DBH which are live or dead (leaning less than 45 degrees), respectively. GS (growing-stock) includes live stems greater than 5 in. DBH which contain at least one 8 ft merchantable log. }
+  \item{landType}{character, one of: "forest", "non-forest", "census water", "non-census water", "water", or "all"; Type of land that estimates will be produced for. Timberland is a subset of forestland (default) which has high site potential and non-reserve status (see details).}
 
   \item{method}{character; design-based estimator to use. One of:  "TI" (temporally indifferent, default), "annual" (annual), "SMA"" (simple moving average), "LMA" (linear moving average), or "EMA" (exponential moving average). See \href{https://www.fs.fed.us/nrs/pubs/jrnl/2020/nrs_2020_stanke_001.pdf}{Stanke et al 2020} for a complete description of these estimators.}
 
   \item{lambda}{numeric (0,1); if \code{method = 'EMA'}, the decay parameter used to define weighting scheme for annual panels. Low values place higher weight on more recent panels, and vice versa. Specify a vector of values to compute estimates using mulitple wieghting schemes, and use \code{plotFIA} with \code{grp} set to \code{lambda} to produce moving average ribbon plots. See \href{https://www.fs.fed.us/nrs/pubs/jrnl/2020/nrs_2020_stanke_001.pdf}{Stanke et al 2020} for examples.}
 
-  \item{treeDomain}{logical predicates defined in terms of the variables in PLOT, TREE, and/or COND tables. Used to define the type of trees for which estimates will be produced (e.g. DBH greater than 20 inches: \code{DIA > 20}, Dominant/Co-dominant crowns only: \code{CCLCD \%in\% c(2,3))}. Multiple conditions are combined with \code{&} (and) or \code{|} (or). Only trees where the condition evaluates to TRUE are used in producing estimates. Should NOT be quoted.}
+  \item{treeDomain}{logical predicates defined in terms of the variables in PLOT, TREE, and/or COND tables. Used to define the type of trees for which estimates will be produced (e.g. DBH greater than 20 inches: \code{DIA > 20}, Dominant/Co-dominant crowns only: \code{CCLCD \%in\% 2:3)}. Multiple conditions are combined with \code{&} (and) or \code{|} (or). Only trees where the condition evaluates to TRUE are used in producing estimates. Should NOT be quoted.}
 
-  \item{areaDomain}{logical predicates defined in terms of the variables in PLOT and/or COND tables. Used to define the area for which estimates will be produced (e.g. within 1 mile of improved road: \code{RDDISTCD \%in\% c(1:6)}, Hard maple/basswood forest type: \code{FORTYPCD == 805)}. Multiple conditions are combined with \code{&} (and) or \code{|} (or). Only plots within areas where the condition evaluates to TRUE are used in producing estimates. Should NOT be quoted.}
+  \item{areaDomain}{logical predicates defined in terms of the variables in PLOT and/or COND tables. Used to define the area for which estimates will be produced (e.g. within 1 mile of improved road: \code{RDDISTCD \%in\% 1:6}, Hard maple/basswood forest type: \code{FORTYPCD == 805)}. Multiple conditions are combined with \code{&} (and) or \code{|} (or). Only plots within areas where the condition evaluates to TRUE are used in producing estimates. Should NOT be quoted.}
 
   \item{totals}{logical; if TRUE, return total population estimates (e.g. total area) along with ratio estimates (e.g. mean trees per acre).}
 
@@ -51,7 +42,7 @@ biomass(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
 
   \item{byPlot}{logical; if TRUE, returns estimates for individual plot locations instead of population estimates.}
 
-  \item{component}{character, combination of: "TOTAL", "AG", "FOLIAGE", "TOP", "BOLE", "STUMP", "SAPLING", "WDLD_SPP"; biomass component to use in estimation. "TOTAL" is a sum of all components, "AG" is a sum of aboveground components, exluding foliage (i.e., top and limbs, merchantable bole, stump, sapling, and woodland species). "FOLIAGE" includes sapling foliage as well as stems larger than 5 in dbh. Foliage biomass of dead stems is assumed to be zero.}
+  \item{chngType}{character, one of "net" or "component"; if "net", produce estimates of net change in land area, and if "component", produce estimates of component change in land area (i.e., showing all shifts across classified attributes).}
 
   \item{nCores}{numeric; number of cores to use for parallel implementation. Check available cores using \code{\link{detectCores}}. Default = 1, serial processing.}
 }
@@ -60,9 +51,9 @@ biomass(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
 \details{
 \strong{Estimation Details}
 
-Estimation of forest variables follows the procedures documented in Bechtold and Patterson (2005) and \href{https://www.fs.fed.us/nrs/pubs/jrnl/2020/nrs_2020_stanke_001.pdf}{Stanke et al 2020}. Specifically, tree biomass and carbon per acre are computed using a sample-based ratio-of-means estimator of total biomass / total land area within the domain of interest.
+Estimation of forest variables follows the procedures documented in Bechtold and Patterson (2005) and \href{https://www.fs.fed.us/nrs/pubs/jrnl/2020/nrs_2020_stanke_001.pdf}{Stanke et al 2020}.
 
-A sum of aboveground biomass components, excluding foliage, is estimated by default (\code{component = 'AG'}). However, users may specify unique combinations of biomass components if they wish to do so. For example, to estimate aboveground biomass, including foliage, specify \code{component = c('AG', 'FOLIAGE')} in the call to \code{biomass}. To estimate all biomass components simultaneously (i.e., grouped by component), specify \code{byComponent = TRUE}. All biomass components are computed using the component ratio method. See references for further details.
+Estimates are returned in terms of \emph{net} annual change in land area by default, however users may choose to estimate components of land area change by setting \code{chngType = 'component'}. For example, imagine we are interested in estimating the change in forestland area across a region. During our sampling period, 4000 acres of forestland was \emph{diverted} to non-forest and an additional 6000 acres of non-forest \emph{reverted} to forestland. rFIA considers these shifts in land classifications change \emph{components}, and hence these point estimates would be returned when \code{chngType = 'component'}. However, we are often intereseted in \emph{net} change in land area, rather than individual components. Here net change in forestland area is +2000 acres (6000-4000) and represents the net result of diversion and reversion processes in the region over our study period.
 
 Users may specify alternatives to the 'Temporally Indifferent' estimator using the \code{method} argument. Alternative design-based estimators include the annual estimator ("ANNUAL"; annual panels, or estimates from plots measured in the same year), simple moving average ("SMA"; combines annual panels with equal weight), linear moving average ("LMA"; combine annual panels with weights that decay \emph{linearly} with time since measurement), and exponential moving average ("EMA"; combine annual panels with weights that decay \emph{exponentially} with time since measurement). The "best" estimator depends entirely on user-objectives, see \href{https://www.fs.fed.us/nrs/pubs/jrnl/2020/nrs_2020_stanke_001.pdf}{Stanke et al 2020} for a complete description of these estimators and tradeoffs between precision and temporal specificity.
 
@@ -87,17 +78,18 @@ Forest land must be at least 10-percent stocked by trees of any size, including 
 
 
 \value{
-Dataframe or SF object (if \code{returnSpatial = TRUE}). If \code{byPlot = TRUE}, values are returned for each plot (\code{PLOT_STATUS_CD = 1} when forest exists at the plot location). All variables with names ending in \code{SE}, represent the estimate of sampling error (\%) of the variable. When \code{variance = TRUE}, variables ending in \code{VAR} denote the variance of the variable and \code{N} is the total sample size (i.e., including non-zero plots).
+Dataframe or SF object (if \code{returnSpatial = TRUE}). If \code{byPlot = TRUE}, values are returned for each plot (proportion of plot in domain of interest; \code{PLOT_STATUS_CD = 1} when forest exists at the plot location). All variables with names ending in \code{SE}, represent the estimate of sampling error (\%) of the variable. When \code{variance = TRUE}, variables ending in \code{VAR} denote the variance of the variable and \code{N} is the total sample size (i.e., including non-zero plots).
 
 \itemize{
       \item{\strong{YEAR}: reporting year associated with estimates}
-      \item{\strong{BIO_ACRE}: estimate of mean tree biomass per acre (tons/acre)}
-      \item{\strong{CARB_ACRE}: estimate of mean tree carbon per acre (tons/acre)}
-      \item{\strong{nPlots_TREE}: number of non-zero plots used to compute biomass and carbon estimates}
-      \item{\strong{nPlots_AREA}: number of non-zero plots used to compute land area estimates}
+      \item{\strong{PERC_CHNG}: estimate of annual percent change in land area within domain of interest (\% of previous)}
+      \item{\strong{AREA_CHNG}: estimate of annual change in land area within domain of interest (acres)}
+      \item{\strong{PREV_AREA}: estimate of total land area within domain of interest at first measurement (acres)}
+      \item{\strong{nPlots}: number of non-zero plots used to compute area change estimates}
       }
-}
 
+Importantly, when \code{chngType = 'component'}, individual change components will be returned. If no grouping variables are specified in \code{grpBy}, results will be grouped by variables named \strong{STATUS1} and \strong{STATUS2}, indicating the land classification at first and second measurements, respectively. Otherwise, if \code{grpBy} is specified, change components will be estimated for all shifts in land area across classified attributes represented by the variables (first and second measurements again denoted by the suffix 1 and 2).
+}
 
 \references{
 rFIA website: \url{https://rfia.netlify.app/}
@@ -109,18 +101,17 @@ Bechtold, W.A.; Patterson, P.L., eds. 2005. The Enhanced Forest Inventory and An
 Stanke, H., Finley, A. O., Weed, A. S., Walters, B. F., & Domke, G. M. (2020). rFIA: An R package for estimation of forest attributes with the US Forest Inventory and Analysis database. Environmental Modelling & Software, 127, 104664.
 }
 
+
 \author{
 Hunter Stanke and Andrew Finley
 }
 
+
 \note{All sampling error estimates (SE) are returned as the "percent coefficient of variation" (standard deviation / mean * 100) for consistency with EVALIDator. IMPORTANT: sampling error cannot be used to construct confidence intervals. Please use \code{variance = TRUE} for that (i.e., return variance and sample size instead of sampling error).}
 
 
-\seealso{
-\code{\link{volume}}, \code{\link{vitalRates}}, \code{\link{growMort}}
-}
 
-
+\seealso{\code{\link{area}}}
 
 \examples{
 ## Load data from the rFIA package
@@ -130,74 +121,28 @@ data(countiesRI)
 ## Most recents subset
 fiaRI_mr <- clipFIA(fiaRI)
 
+## Most recent estimates of change in forested area in RI
+areaChange(db = fiaRI_mr)
 
-## Most recent estimates of aboveground biomass (excluding foliage)
-## for growing-stock trees on timber land
-biomass(db = fiaRI_mr,
-        landType = 'timber',
-        treeType = 'gs')
-
-## Same as above but include foliage
-biomass(db = fiaRI_mr,
-        landType = 'timber',
-        treeType = 'gs',
-        component = c('AG', 'FOLIAGE'))
 \donttest{
+## Same as above grouped by land class
+areaChange(db = fiaRI_mr, byLandType = TRUE)
 
-## Same as above, but at the plot-level
-biomass(db = fiaRI_mr,
-        landType = 'timber',
-        treeType = 'gs',
-        component = c('AG', 'FOLIAGE'),
-        byPlot = TRUE)
-
-## Belowground (i.e., coarse roots) and stump biomass only
-biomass(db = fiaRI_mr,
-        component = c('ROOT', 'STUMP'))
-
-## Estimate all biomass components simultaneosly
-biomass(db = fiaRI_mr,
-        byComponent = TRUE)
-
-## Estimates for live white pine ( > 12" DBH) on forested mesic sites (all available inventories)
-biomass(fiaRI_mr,
-        treeType = 'live',
-        treeDomain = SPCD == 129 & DIA > 12, # Species code for white pine
-        areaDomain = PHYSCLCD \%in\% 21:29) # Mesic Physiographic classes
-
-## Most recent estimates grouped by stand age on forest land
-# Make a categorical variable which represents stand age (grouped by 10 yr intervals)
-fiaRI_mr$COND$STAND_AGE <- makeClasses(fiaRI_mr$COND$STDAGE, interval = 10)
-biomass(db = fiaRI_mr,
-        grpBy = STAND_AGE)
-
-## Estimates for snags greater than 20 in DBH on forestland for all
-##  available inventories (time-series)
-biomass(db = fiaRI,
-        landType = 'forest',
-        treeType = 'dead',
-        treeDomain = DIA > 20)
-
-## Most recent estimates for live stems on forest land by species
-biomass(db = fiaRI_mr,
-        landType = 'forest',
-        treeType = 'live',
-        bySpecies = TRUE)
+## Estimates for change in forest area where stems greater than 20 in DBH
+## occur for all available inventories (time-series)
+areaChange(db = fiaRI,
+           landType = 'forest',
+           treeDomain = DIA > 20)
 
 ## Same as above, but implemented in parallel (much quicker)
 parallel::detectCores(logical = FALSE) # 4 cores available, we will take 2
-biomass(db = fiaRI_mr,
-        landType = 'forest',
-        treeType = 'live',
-        bySpecies = TRUE,
-        nCores = 2)
+areaChange(db = fiaRI,
+           landType = 'forest',
+           treeDomain = DIA > 20,
+           nCores =2)
 
-
-## Most recent estimates for all stems on forest land grouped by user-defined areal units
-ctSF <- biomass(fiaRI_mr,
-                polys = countiesRI,
-                returnSpatial = TRUE)
-plot(ctSF) # Plot multiple variables simultaneously
-plotFIA(ctSF, BIO_ACRE) # Plot of aboveground biomass per acre
-}
+## Return estimates at the plot-level
+areaChange(db = fiaRI,
+           byPlot = TRUE)
+  }
 }

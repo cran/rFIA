@@ -15,6 +15,7 @@ fsiStarter <- function(x,
                        totals = FALSE,
                        byPlot = FALSE,
                        useSeries = FALSE,
+                       mostRecent = FALSE,
                        nCores = 1,
                        remote,
                        mr){
@@ -138,7 +139,7 @@ fsiStarter <- function(x,
     ## Has to have a remeasurement, be in the current sample, and of the national design
     filter(!is.na(REMPER) & !is.na(PREV_PLT_CN) & PLOT_STATUS_CD != 3 & DESIGNCD %in% c(1, 501:505)) %>%
     left_join(select(db$PLOT, PLT_CN, DESIGNCD, PLOT_STATUS_CD), by = c('PREV_PLT_CN' = 'PLT_CN'), suffix = c('', '.prev')) %>%
-    ## past emasurement must be in the previous sample and of national design
+    ## past remasurement must be in the previous sample and of national design
     filter(PLOT_STATUS_CD.prev != 3 & DESIGNCD.prev %in% c(1, 501:505))
 
   ## Filtering out all inventories that are not relevant to the current estimation
@@ -152,6 +153,22 @@ fsiStarter <- function(x,
   ## this happens, merge strata so that all have at least two obs
   if (str_to_upper(method) != 'TI') {
     pops <- mergeSmallStrata(db, pops)
+  }
+
+
+  ## If we opt to use multiple remeasurements to estimate change, we can't use
+  ## clipFIA to merge most recent inventories. Instead, we'll have to subset the
+  ## most recent inventories in the population tables, and combine at the end
+  if (useSeries & mostRecent & str_to_upper(method) != 'ANNUAL') {
+
+    ## Pull the most recent YEAR from each state - already filtered EVALTYP above
+    pops <- pops %>%
+      group_by(STATECD) %>%
+      filter(YEAR == max(YEAR, na.rm = TRUE)) %>%
+      ungroup()
+
+    ## Trick rFIA into doing the merge, even though db wasn't clipped
+    mr = TRUE
   }
 
 
@@ -244,7 +261,8 @@ fsiStarter <- function(x,
   a <- bind_rows(out[names(out) == 'a'])
 
 
-  out <- list(t = t, t1 = t1, a = a, grpBy = grpBy, scaleBy = scaleBy, grpByOrig = grpByOrig, pops = pops)
+  out <- list(t = t, t1 = t1, a = a, grpBy = grpBy, scaleBy = scaleBy,
+              grpByOrig = grpByOrig, pops = pops, mr = mr)
 
 }
 
@@ -268,6 +286,7 @@ fsi <- function(db,
                    variance = TRUE,
                    byPlot = FALSE,
                    useSeries = FALSE,
+                   mostRecent = FALSE,
                    scaleBy = NULL,
                    betas = NULL,
                    returnBetas = FALSE,
@@ -316,7 +335,7 @@ If not already installed, you can install JAGS from SourceForge:
                 bySpecies, bySizeClass,
                 landType, treeType, method,
                 lambda, treeDomain, areaDomain,
-                totals, byPlot, useSeries,
+                totals, byPlot, useSeries, mostRecent,
                 nCores, remote, mr)
 
   ## Bring the results back
@@ -327,7 +346,7 @@ If not already installed, you can install JAGS from SourceForge:
   grpBy <- out[names(out) == 'grpBy'][[1]]
   scaleBy <- out[names(out) == 'scaleBy'][[1]]
   grpByOrig <- out[names(out) == 'grpByOrig'][[1]]
-
+  mr <- out[names(out) == 'mr'][[1]]
 
 
 
@@ -479,6 +498,15 @@ If not already installed, you can install JAGS from SourceForge:
                upper_fe_rate = post_fe$upper_fe_rate,
                lower_fe_rate = post_fe$lower_fe_rate)
 
+      ## Clean up names of betas
+      betas <- betas %>%
+        select(grps, alpha = int, rate, alpha_lower = lower_int, alpha_upper = upper_int,
+               rate_lower = lower_rate, rate_upper = upper_rate,
+               fixed_alpha = fe_int, fixed_rate = fe_rate,
+               fixed_alpha_lower = lower_fe_int, fixed_alpha_upper = upper_fe_int,
+               fixed_rate_lower = lower_fe_rate, fixed_rate_upper = upper_fe_rate,
+               n)
+
     } else {
       ## Make it tidy
       betas <- bind_rows(chains) %>%
@@ -496,19 +524,18 @@ If not already installed, you can install JAGS from SourceForge:
         pivot_wider(names_from = term, values_from = mean:lower) %>%
         rename(int = mean_int,
                rate = mean_rate)
+
       betas$n <- nrow(grpRates)
       betas$grps = 1
 
+      ## Clean up names of betas
+      betas <- betas %>%
+        select(grps, alpha = int, rate, alpha_lower = lower_int, alpha_upper = upper_int,
+               rate_lower = lower_rate, rate_upper = upper_rate, n)
+
     }
 
-    ## Clean up names of betas
-    betas <- betas %>%
-      select(grps, alpha = int, rate, alpha_lower = lower_int, alpha_upper = upper_int,
-             rate_lower = lower_rate, rate_upper = upper_rate,
-             fixed_alpha = fe_int, fixed_rate = fe_rate,
-             fixed_alpha_lower = lower_fe_int, fixed_alpha_upper = upper_fe_int,
-             fixed_rate_lower = lower_fe_rate, fixed_rate_upper = upper_fe_rate,
-             n)
+
   }
 
 
@@ -708,8 +735,8 @@ If not already installed, you can install JAGS from SourceForge:
       tEst <- tEst %>%
         left_join(select(db$POP_ESTN_UNIT, CN, STATECD), by = c('ESTN_UNIT_CN' = 'CN')) %>%
         left_join(wgts, by = joinCols) %>%
-        mutate(across(ctEst:faEst, ~(.*wgt))) %>%
-        mutate(across(ctVar:cvEst_psi, ~(.*(wgt^2)))) %>%
+        mutate(across(ctEst:rempEst, ~(.*wgt))) %>%
+        mutate(across(ctVar:cvEst_remp, ~(.*(wgt^2)))) %>%
         group_by(ESTN_UNIT_CN, .dots = grpBy) %>%
         summarize(across(ctEst:plotIn_t, sum, na.rm = TRUE))
 
@@ -752,6 +779,7 @@ If not already installed, you can install JAGS from SourceForge:
                PERC_FSI = siEst / ra1Est,
                PREV_RD = ra1Est / faEst,
                CURR_RD = ra2Est / faEst,
+               REMPER = rempEst / faEst,
 
                ## Ratio variance
                ctVar = (1/ptEst^2) * (ctVar + (TPA_RATE^2 * ptVar) - (2 * TPA_RATE * cvEst_ct)),
@@ -760,6 +788,7 @@ If not already installed, you can install JAGS from SourceForge:
                siVar = (1/faEst^2) * (siVar + (FSI^2 * faVar) - (2 * FSI * cvEst_si)),
                ra1Var = (1/faEst^2) * (ra1Var + (PREV_RD^2 * faVar) - (2 * PREV_RD * cvEst_ra1)),
                ra2Var = (1/faEst^2) * (ra2Var + (CURR_RD^2 * faVar) - (2 * CURR_RD * cvEst_ra2)),
+               rempVar = (1/faEst^2) * (rempVar + (REMPER^2 * faVar) - (2 * REMPER * cvEst_remp)),
 
                ## Make it a percent
                PERC_FSI = PERC_FSI * 100,
@@ -773,6 +802,7 @@ If not already installed, you can install JAGS from SourceForge:
                BA_RATE_VAR = cbVar,
                PREV_RD_VAR = ra1Var,
                CURR_RD_VAR = ra2Var,
+               REMPER_VAR = rempVar,
 
                nPlots = plotIn_t,
                N = p2eu,

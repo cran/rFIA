@@ -2,20 +2,23 @@
 \alias{fsi}
 
 
-%- Also NEED an '\alias' for EACH other topic documented here.
 \title{Estimate the Forest Stability Index from the FIADB}
+
+
 \description{
 \lifecycle{maturing}
-Estimate annual change in relative live tree density from the FIADB using the Forest Stability Index (FSI). See Stanke et al. 2020 ("Over half of western United States' most abundant tree species in decline") for a complete description of the the Forest Stability Index.   }
+Estimate annual change in relative live tree density from the FIADB using the Forest Stability Index (FSI). See Stanke et al. 2020 (doi: 10.1038/s41467-020-20678-z) for a complete description of the the Forest Stability Index.   }
+
 \usage{
 fsi(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
     bySpecies = FALSE, bySizeClass = FALSE,
     landType = "forest", treeType = "live", method = "TI",
     lambda = 0.5, treeDomain = NULL, areaDomain = NULL,
     totals = TRUE, variance = TRUE, byPlot = FALSE,
-    useSeries = FALSE, scaleBy = NULL, betas = NULL,
-    returnBetas = FALSE, nCores = 1)
+    useSeries = FALSE, mostRecent = FALSE, scaleBy = NULL,
+    betas = NULL, returnBetas = FALSE, nCores = 1)
 }
+
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{db}{\code{FIA.Database} or \code{Remote.FIA.Database} object produced from \code{\link{readFIA}} or \code{\link{getFIA}}. If a \code{Remote.FIA.Database}, data will be read in and processed state-by-state to conserve RAM (see details for an example).}
@@ -50,6 +53,8 @@ fsi(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
 
   \item{useSeries}{logical; If TRUE, use multiple remeasurements to estimate annual change in relative density on each plot, when available.}
 
+  \item{mostRecent}{logical; If TRUE, only return results for the most recent inventory in each state. Only useful when \code{useSeries=TRUE}, as in this case, using \code{clipFIA} to select the most recent inventory will drop all but the most recent remeasurement.}
+
   \item{scaleBy}{variables from PLOT or COND tables to use as 'random effects' in model of size-density relationships. Multiple variables should be combined with \code{c()}.}
 
   \item{betas}{data.frame; coefficients of maximum size-density models returned in a previous call to \code{fsi} when \code{returnBetas = TRUE}. See examples.}
@@ -64,7 +69,7 @@ fsi(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
 
 Estimation of forest variables follows the procedures documented in Bechtold and Patterson (2005) and \href{https://www.fs.fed.us/nrs/pubs/jrnl/2020/nrs_2020_stanke_001.pdf}{Stanke et al 2020}.
 
-Please see Stanke et al. 2020 ("Over half of western United States' most abundant tree species in decline"; link coming soon) for a complete description of the Forest Stability Index (FSI). In short, the FSI is a direct measure of temporal change in the relative density of live trees, where relative density is defined as the ratio of observed tree density to maximum potential tree density. Maximum potential tree density is modeled as power of average tree size - in the current implementation average tree basal area is used. Users may allow both the "slopes" and intercepts of this power function to vary by classified groups, like forest community type using the \code{scaleBy} argument. Users may return the estimated parameters of maximum size-density models by specifying \code{returnBetas = TRUE}.
+Please see Stanke et al. 2020 (doi: 10.1038/s41467-020-20678-z) for a complete description of the Forest Stability Index (FSI). In short, the FSI is a direct measure of temporal change in the relative density of live trees, where relative density is defined as the ratio of observed tree density to maximum potential tree density. Maximum potential tree density is modeled as power of average tree size - in the current implementation average tree basal area is used. Users may allow both the "slopes" and intercepts of this power function to vary by classified groups, like forest community type using the \code{scaleBy} argument. Users may return the estimated parameters of maximum size-density models by specifying \code{returnBetas = TRUE}.
 
 Users may specify alternatives to the 'Temporally Indifferent' estimator using the \code{method} argument. Alternative design-based estimators include the annual estimator ("ANNUAL"; annual panels, or estimates from plots measured in the same year), simple moving average ("SMA"; combines annual panels with equal weight), linear moving average ("LMA"; combine annual panels with weights that decay \emph{linearly} with time since measurement), and exponential moving average ("EMA"; combine annual panels with weights that decay \emph{exponentially} with time since measurement). The "best" estimator depends entirely on user-objectives, see \href{https://www.fs.fed.us/nrs/pubs/jrnl/2020/nrs_2020_stanke_001.pdf}{Stanke et al 2020} for a complete description of these estimators and tradeoffs between precision and temporal specificity.
 
@@ -117,6 +122,8 @@ When \code{returnBetas = TRUE}, a list will be returned. This list will contain 
 }
 
 \references{
+Stanke, H., Finley, A.O., Domke, G.M., Weed, A.S., MacFarlane, D.W. (2020). Over half of western US' most abundant tree species in decline. Nature Communications. doi: 10.1038/s41467-020-20678-z
+
 rFIA website: \url{https://rfia.netlify.app/}
 
 FIA Database User Guide: \url{https://www.fia.fs.fed.us/library/database-documentation/}

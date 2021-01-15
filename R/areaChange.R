@@ -1,33 +1,30 @@
-areaStarter <- function(x,
-                        db,
-                        grpBy_quo = NULL,
-                        polys = NULL,
-                        returnSpatial = FALSE,
-                        byLandType = FALSE,
-                        landType = 'forest',
-                        method = 'TI',
-                        lambda = .5,
-                        treeDomain = NULL,
-                        areaDomain = NULL,
-                        totals = FALSE,
-                        byPlot = FALSE,
-                        nCores = 1,
-                        remote,
-                        mr){
+acStarter <- function(x,
+                      db,
+                      grpBy_quo = NULL,
+                      polys = NULL,
+                      returnSpatial = FALSE,
+                      byLandType = FALSE,
+                      landType = 'forest',
+                      method = 'TI',
+                      lambda = .5,
+                      treeDomain = NULL,
+                      areaDomain = NULL,
+                      totals = FALSE,
+                      byPlot = FALSE,
+                      chngType = 'net',
+                      nCores = 1,
+                      remote,
+                      mr){
 
   ## Read required data, prep the database -------------------------------------
-  reqTables <- c('PLOT', 'TREE', 'COND', 'POP_PLOT_STRATUM_ASSGN',
+  reqTables <- c('PLOT', 'TREE', 'COND', 'SUBP_COND_CHNG_MTRX',
+                 'POP_PLOT_STRATUM_ASSGN',
                  'POP_ESTN_UNIT', 'POP_EVAL',
                  'POP_STRATUM', 'POP_EVAL_TYP', 'POP_EVAL_GRP')
 
   ## If remote, read in state by state. Otherwise, drop all unneccesary tables
   db <- readRemoteHelper(x, db, remote, reqTables, nCores)
 
-  ## IF the object was clipped
-  if ('prev' %in% names(db$PLOT)){
-    ## Only want the current plots, no grm
-    db$PLOT <- filter(db$PLOT, prev == 0)
-  }
 
   ## Handle TX issues - we only keep inventory years that are present in BOTH
   ## EAST AND WEST TX
@@ -49,7 +46,6 @@ areaStarter <- function(x,
   if (str_to_upper(method) %in% c('TI', 'SMA', 'LMA', 'EMA', 'ANNUAL') == FALSE) {
     warning(paste('Method', method, 'unknown. Defaulting to Temporally Indifferent (TI).'))
   }
-
 
 
 
@@ -95,6 +91,21 @@ areaStarter <- function(x,
                                   db$COND$SITECLCD,
                                   db$COND$RESERVCD)
 
+  ## Make land status a grouping variable if estimating change components
+  if (chngType == 'component') {
+    grpBy <- c('STATUS', grpBy)
+
+    if (landType == 'forest') {
+      db$COND <- db$COND %>%
+        mutate(STATUS = case_when(landD == 1 ~ 'Forest',
+                                  TRUE ~ 'Non-forest'))
+    } else {
+      db$COND <- db$COND %>%
+        mutate(STATUS = case_when(landD == 1 ~ 'Timber',
+                                  TRUE ~ 'Non-timber'))
+    }
+  }
+
   ## Spatial boundary
   if(!is.null(polys)){
     db$PLOT$sp <- ifelse(!is.na(db$PLOT$polyID), 1, 0)
@@ -111,12 +122,11 @@ areaStarter <- function(x,
 
 
 
-
   ## Handle population tables --------------------------------------------------
   ## Filtering out all inventories that are not relevant to the current estimation
   ## type. If using estimator other than TI, handle the differences in P2POINTCNT
   ## and in assigning YEAR column (YEAR = END_INVYR if method = 'TI')
-  pops <- handlePops(db, evalType = c('EXPCURR'), method, mr)
+  pops <- handlePops(db, evalType = c('EXPCHNG'), method, mr)
 
   ## A lot of states do their stratification in such a way that makes it impossible
   ## to estimate variance of annual panels w/ post-stratified estimator. That is,
@@ -154,7 +164,9 @@ areaStarter <- function(x,
   ## Reduces memory requirements and speeds up processing ----------------------
 
   ## Only the necessary plots for EVAL of interest
-  db$PLOT <- filter(db$PLOT, PLT_CN %in% pops$PLT_CN)
+  ## We want the plots in the inventory and their previous measurements
+  keepThese <- distinct(pops, PLT_CN) %>% left_join(select(db$PLOT, PLT_CN, PREV_PLT_CN), by = 'PLT_CN')
+  db$PLOT <- filter(db$PLOT, PLT_CN %in% c(keepThese$PLT_CN, keepThese$PREV_PLT_CN))
 
   ## Narrow up the tables to the necessary variables
   ## Which grpByNames are in which table? Helps us subset below
@@ -167,14 +179,19 @@ areaStarter <- function(x,
   ### Only joining tables necessary to produce plot level estimates
   db$PLOT <- select(db$PLOT, c('PLT_CN', 'STATECD', 'MACRO_BREAKPOINT_DIA',
                                'INVYR', 'MEASYEAR', 'PLOT_STATUS_CD', COUNTYCD,
+                               'PREV_PLT_CN', 'REMPER',
                                all_of(grpP), 'aD_p', 'sp'))
   db$COND <- select(db$COND, c('PLT_CN', 'CONDPROP_UNADJ', 'PROP_BASIS',
-                               'COND_STATUS_CD', 'CONDID',
+                               'CONDID',
                                all_of(grpC), 'aD_c', 'landD')) %>%
-    filter(PLT_CN %in% db$PLOT$PLT_CN)
+    filter(PLT_CN %in% c(db$PLOT$PLT_CN, db$PLOT$PREV_PLT_CN))
   db$TREE <- select(db$TREE, c('PLT_CN', 'CONDID', 'DIA', 'SPCD', 'TPA_UNADJ',
                                'SUBP', 'TREE', all_of(grpT), 'tD')) %>%
-    filter(PLT_CN %in% db$PLOT$PLT_CN)
+    filter(PLT_CN %in% c(db$PLOT$PLT_CN, db$PLOT$PREV_PLT_CN))
+  db$SUBP_COND_CHNG_MTRX <- select(db$SUBP_COND_CHNG_MTRX,
+                                   c('PLT_CN', 'SUBP', 'CONDID', 'PREVCOND',
+                                     'SUBPTYP', 'SUBPTYP_PROP_CHNG')) %>%
+    filter(PLT_CN %in% c(db$PLOT$PLT_CN, db$PLOT$PREV_PLT_CN))
 
 
 
@@ -193,16 +210,18 @@ areaStarter <- function(x,
         library(stringr)
         library(rFIA)
       })
-      out <- parLapply(cl, X = names(plts), fun = areaHelper1, plts,
-                       db[names(db) %in% c('COND', 'TREE')],
-                       grpBy, byPlot)
+      out <- parLapply(cl, X = names(plts), fun = acHelper1, plts,
+                       db[names(db) %in% c('COND', 'TREE', 'SUBP_COND_CHNG_MTRX')],
+                       grpBy, byPlot, keepThese, chngType, areaDomain, treeDomain)
       #stopCluster(cl) # Keep the cluster active for the next run
     } else { # Unix systems
-      out <- mclapply(names(plts), FUN = areaHelper1, plts,
-                      db[names(db) %in% c('COND', 'TREE')],
-                      grpBy, byPlot, mc.cores = nCores)
+      out <- mclapply(names(plts), FUN = acHelper1, plts,
+                      db[names(db) %in% c('COND', 'TREE', 'SUBP_COND_CHNG_MTRX')],
+                      grpBy, byPlot, keepThese, chngType, areaDomain, treeDomain,
+                      mc.cores = nCores)
     }
   })
+
 
 
 
@@ -229,7 +248,7 @@ areaStarter <- function(x,
     ## back to dataframes
     out <- unlist(out, recursive = FALSE)
     t <- bind_rows(out[names(out) == 't'])
-    a <- bind_rows(out[names(out) == 'a'])
+    grpBy <- out[names(out) == 'grpBy'][[1]]
 
     ## Adding YEAR to groups
     grpBy <- c('YEAR', grpBy)
@@ -240,10 +259,10 @@ areaStarter <- function(x,
     suppressWarnings({
       ## Compute estimates in parallel -- Clusters in windows, forking otherwise
       if (Sys.info()['sysname'] == 'Windows'){
-        out <- parLapply(cl, X = names(popState), fun = areaHelper2, popState, t, a, grpBy, method)
+        out <- parLapply(cl, X = names(popState), fun = acHelper2, popState, t, grpBy, method)
         stopCluster(cl)
       } else { # Unix systems
-        out <- mclapply(names(popState), FUN = areaHelper2, popState, t, a, grpBy, method, mc.cores = nCores)
+        out <- mclapply(names(popState), FUN = acHelper2, popState, t, grpBy, method, mc.cores = nCores)
       }
     })
     ## back to dataframes
@@ -275,10 +294,10 @@ areaStarter <- function(x,
       tEst <- tEst %>%
         left_join(select(db$POP_ESTN_UNIT, CN, STATECD), by = c('ESTN_UNIT_CN' = 'CN')) %>%
         left_join(wgts, by = joinCols) %>%
-        mutate(across(c(aEst, atEst), ~(.*wgt))) %>%
-        mutate(across(c(aVar, atVar), ~(.*(wgt^2)))) %>%
+        mutate(across(c(pEst, cEst), ~(.*wgt))) %>%
+        mutate(across(c(pVar, cVar), ~(.*(wgt^2)))) %>%
         group_by(ESTN_UNIT_CN, .dots = grpBy) %>%
-        summarize(across(aEst:plotIn_AREA, sum, na.rm = TRUE))
+        summarize(across(pEst:plotIn_AREA, sum, na.rm = TRUE))
 
 
 
@@ -301,23 +320,22 @@ areaStarter <- function(x,
 }
 
 
-
-
 #' @export
-area <- function(db,
-                 grpBy = NULL,
-                 polys = NULL,
-                 returnSpatial = FALSE,
-                 byLandType = FALSE,
-                 landType = 'forest',
-                 method = 'TI',
-                 lambda = .5,
-                 treeDomain = NULL,
-                 areaDomain = NULL,
-                 totals = FALSE,
-                 variance = FALSE,
-                 byPlot = FALSE,
-                 nCores = 1) {
+areaChange <- function (db,
+                        grpBy = NULL,
+                        polys = NULL,
+                        returnSpatial = FALSE,
+                        byLandType = FALSE,
+                        landType = 'forest',
+                        method = 'TI',
+                        lambda = .5,
+                        treeDomain = NULL,
+                        areaDomain = NULL,
+                        totals = FALSE,
+                        variance = FALSE,
+                        byPlot = FALSE,
+                        chngType = 'net',
+                        nCores = 1) {
 
   ##  don't have to change original code
   grpBy_quo <- rlang::enquo(grpBy)
@@ -337,11 +355,11 @@ area <- function(db,
 
 
   ## Run the main portion
-  out <- lapply(X = iter, FUN = areaStarter, db,
+  out <- lapply(X = iter, FUN = acStarter, db,
                 grpBy_quo = grpBy_quo, polys, returnSpatial,
                 byLandType, landType, method,
                 lambda, treeDomain, areaDomain,
-                totals, byPlot, nCores, remote, mr)
+                totals, byPlot, chngType, nCores, remote, mr)
   ## Bring the results back
   out <- unlist(out, recursive = FALSE)
   tEst <- bind_rows(out[names(out) == 'tEst'])
@@ -376,45 +394,92 @@ area <- function(db,
       summarize_all(sum,na.rm = TRUE)
 
 
-    suppressWarnings({
-      ## Bring them together
-      tOut <- tTotal %>%
-        #left_join(aTotal, by = grpBy) %>%
-        # Renaming, computing ratios, and SE
-        mutate(PERC_AREA = aEst / atEst * 100,
-               AREA_TOTAL = aEst,
-               AREA_TOTAL_SE = sqrt(aVar) / AREA_TOTAL *100,
+    if (chngType == 'net') {
+      suppressWarnings({
+        ## Bring them together
+        tOut <- tTotal %>%
+          #left_join(aTotal, by = grpBy) %>%
+          # Renaming, computing ratios, and SE
+          mutate(PERC_CHNG = cEst / pEst * 100,
+                 AREA_CHNG = cEst,
+                 PREV_AREA = pEst,
 
-               ## ratio variance
-               rVar = (1/atEst^2) * (aVar + (PERC_AREA^2 * atVar) - 2 * PERC_AREA * aCV),
-               PERC_AREA_SE = sqrt(rVar) / PERC_AREA * 100,
-               PERC_AREA_VAR = rVar,
-               #N = sum(N),
-               AREA_TOTAL_VAR = aVar,
-               nPlots_AREA = plotIn_AREA) %>%
-        select(grpBy, PERC_AREA, AREA_TOTAL, PERC_AREA_SE, AREA_TOTAL_SE, PERC_AREA_VAR, AREA_TOTAL_VAR, nPlots_AREA, N)
-    })
+                 AREA_CHNG_SE = sqrt(cVar) / abs(AREA_CHNG) *100,
+                 PREV_AREA_SE = sqrt(pVar) / PREV_AREA *100,
 
-    # Snag the names
-    tNames <- names(tOut)[names(tOut) %in% grpBy == FALSE]
+                 ## ratio variance
+                 rVar = (1/pEst^2) * (cVar + (PERC_CHNG^2 * pVar) - 2 * PERC_CHNG * cCV),
+                 PERC_CHNG_SE = sqrt(rVar) / abs(PERC_CHNG) * 100,
+                 PERC_CHNG_VAR = rVar,
+                 #N = sum(N),
+                 AREA_CHNG_VAR = cVar,
+                 PREV_AREA_VAR = pVar,
+                 nPlots_AREA = plotIn_AREA) %>%
+          select(grpBy, PERC_CHNG, AREA_CHNG, PREV_AREA,
+                 PERC_CHNG_SE, AREA_CHNG_SE, PREV_AREA_SE,
+                 PERC_CHNG_VAR, AREA_CHNG_VAR, PREV_AREA_VAR,
+                 nPlots_AREA, N)
+      })
 
-    if (variance) {
+      # Snag the names
+      tNames <- names(tOut)[names(tOut) %in% grpBy == FALSE]
+
+      if (variance) {
+        tOut <- tOut %>%
+          select(-c(PERC_CHNG_SE, AREA_CHNG_SE, PREV_AREA_SE))
+      } else {
+        tOut <- tOut %>%
+          select(-c(PERC_CHNG_VAR, AREA_CHNG_VAR, PREV_AREA_VAR, N))
+      }
+
+      ## Pretty output
       tOut <- tOut %>%
-        select(-c(AREA_TOTAL_SE, PERC_AREA_SE))
+        ungroup() %>%
+        mutate_if(is.factor, as.character) %>%
+        drop_na(grpBy) %>%
+        arrange(YEAR) %>%
+        as_tibble()
+
+
+    ## Change by component
     } else {
-      tOut <- tOut %>%
-        select(-c(AREA_TOTAL_VAR, PERC_AREA_VAR, N))
+      suppressWarnings({
+        ## Bring them together
+        tOut <- tTotal %>%
+          filter(cEst > 0) %>%
+          mutate(AREA_CHNG = cEst,
+                 AREA_CHNG_SE = sqrt(cVar) / abs(AREA_CHNG) *100,
+                 AREA_CHNG_VAR = cVar,
+                 nPlots_AREA = plotIn_AREA) %>%
+          select(grpBy, AREA_CHNG,
+                 AREA_CHNG_SE,
+                 AREA_CHNG_VAR,
+                 nPlots_AREA, N)
+      })
+
+      # Snag the names
+      tNames <- names(tOut)[names(tOut) %in% grpBy == FALSE]
+
+      if (variance) {
+        tOut <- tOut %>%
+          select(-c(AREA_CHNG_SE))
+      } else {
+        tOut <- tOut %>%
+          select(-c(AREA_CHNG_VAR, N))
+      }
     }
+
+    ## Pretty output
+    tOut <- tOut %>%
+      ungroup() %>%
+      mutate_if(is.factor, as.character) %>%
+      arrange(YEAR) %>%
+      as_tibble()
+
 
   }
 
-  ## Pretty output
-  tOut <- tOut %>%
-    ungroup() %>%
-    mutate_if(is.factor, as.character) %>%
-    drop_na(grpBy) %>%
-    arrange(YEAR) %>%
-    as_tibble()
+
 
 
 
@@ -443,5 +508,6 @@ area <- function(db,
 
 
   return(tOut)
-}
 
+
+}
