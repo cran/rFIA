@@ -88,7 +88,6 @@ vegStructStarter <- function(x,
            GROWTH_HABIT = case_when(is.na(GROWTH_HABIT_CD) ~ NA_character_,
                                     GROWTH_HABIT_CD == 'TT' ~ 'Tally tree',
                                     GROWTH_HABIT_CD == 'NT' ~ 'Non-tally tree',
-                                    GROWTH_HABIT_CD == 'SH' ~ 'Tally Tree',
                                     GROWTH_HABIT_CD == 'SH' ~ 'Shrubs/ vines',
                                     GROWTH_HABIT_CD == 'FB' ~ 'Forbs',
                                     GROWTH_HABIT_CD == 'GR' ~ 'Graminoids'))
@@ -100,7 +99,10 @@ vegStructStarter <- function(x,
     ## Add shapefile names to grpBy
     grpBy = c(grpBy, 'polyID')
     ## Do the intersection
-    db <- arealSumPrep2(db, grpBy, polys, nCores)
+    db <- arealSumPrep2(db, grpBy, polys, nCores, remote)
+
+    ## If there's nothing there, skip the state
+    if (is.null(db)) return('no plots in polys')
   }
 
   ## If we want to return spatial plots
@@ -358,6 +360,7 @@ vegStruct <- function(db,
                 byPlot, totals, nCores, remote, mr)
   ## Bring the results back
   out <- unlist(out, recursive = FALSE)
+  if (remote) out <- dropStatesOutsidePolys(out)
   aEst <- bind_rows(out[names(out) == 'aEst'])
   tEst <- bind_rows(out[names(out) == 'tEst'])
   grpBy <- out[names(out) == 'grpBy'][[1]]

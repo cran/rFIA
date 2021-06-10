@@ -72,7 +72,10 @@ acStarter <- function(x,
     ## Add shapefile names to grpBy
     grpBy = c(grpBy, 'polyID')
     ## Do the intersection
-    db <- arealSumPrep2(db, grpBy, polys, nCores)
+    db <- arealSumPrep2(db, grpBy, polys, nCores, remote)
+
+    ## If there's nothing there, skip the state
+    if (is.null(db)) return('no plots in polys')
   }
 
   ## If we want to return spatial plots
@@ -362,6 +365,7 @@ areaChange <- function (db,
                 totals, byPlot, chngType, nCores, remote, mr)
   ## Bring the results back
   out <- unlist(out, recursive = FALSE)
+  if (remote) out <- dropStatesOutsidePolys(out)
   tEst <- bind_rows(out[names(out) == 'tEst'])
   grpBy <- out[names(out) == 'grpBy'][[1]]
   grpByOrig <- out[names(out) == 'grpByOrig'][[1]]
@@ -421,8 +425,7 @@ areaChange <- function (db,
                  nPlots_AREA, N)
       })
 
-      # Snag the names
-      tNames <- names(tOut)[names(tOut) %in% grpBy == FALSE]
+
 
       if (variance) {
         tOut <- tOut %>%
@@ -431,6 +434,9 @@ areaChange <- function (db,
         tOut <- tOut %>%
           select(-c(PERC_CHNG_VAR, AREA_CHNG_VAR, PREV_AREA_VAR, N))
       }
+
+      # Snag the names
+      tNames <- names(tOut)[names(tOut) %in% grpBy == FALSE]
 
       ## Pretty output
       tOut <- tOut %>%

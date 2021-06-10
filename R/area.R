@@ -76,7 +76,10 @@ areaStarter <- function(x,
     ## Add shapefile names to grpBy
     grpBy = c(grpBy, 'polyID')
     ## Do the intersection
-    db <- arealSumPrep2(db, grpBy, polys, nCores)
+    db <- arealSumPrep2(db, grpBy, polys, nCores, remote)
+
+    ## If there's nothing there, skip the state
+    if (is.null(db)) return('no plots in polys')
   }
 
   ## If we want to return spatial plots
@@ -128,8 +131,6 @@ areaStarter <- function(x,
 
 
 
-
-
   ## Canned groups -------------------------------------------------------------
   # Make a new column that describes the land type and hold in COND
   if (byLandType){
@@ -140,7 +141,8 @@ areaStarter <- function(x,
         COND_STATUS_CD == 1 & SITECLCD %in% c(1:6) & RESERVCD ==0 ~ 'Timber',
         COND_STATUS_CD == 1 ~ 'Non-Timber Forest',
         COND_STATUS_CD == 2 ~ 'Non-Forest',
-        COND_STATUS_CD == 3 | COND_STATUS_CD == 4 ~ 'Water'))
+        COND_STATUS_CD == 3 | COND_STATUS_CD == 4 ~ 'Water'),
+        landD = 1) # Reset the land basis to all
     db$COND <- db$COND[!is.na(db$COND$landType),]
   }
 
@@ -344,6 +346,7 @@ area <- function(db,
                 totals, byPlot, nCores, remote, mr)
   ## Bring the results back
   out <- unlist(out, recursive = FALSE)
+  if (remote) out <- dropStatesOutsidePolys(out)
   tEst <- bind_rows(out[names(out) == 'tEst'])
   grpBy <- out[names(out) == 'grpBy'][[1]]
   grpByOrig <- out[names(out) == 'grpByOrig'][[1]]
@@ -381,22 +384,31 @@ area <- function(db,
       tOut <- tTotal %>%
         #left_join(aTotal, by = grpBy) %>%
         # Renaming, computing ratios, and SE
-        mutate(PERC_AREA = aEst / atEst * 100,
+        mutate(PERC_AREA = aEst / atEst,
                AREA_TOTAL = aEst,
                AREA_TOTAL_SE = sqrt(aVar) / AREA_TOTAL *100,
 
                ## ratio variance
-               rVar = (1/atEst^2) * (aVar + (PERC_AREA^2 * atVar) - 2 * PERC_AREA * aCV),
-               PERC_AREA_SE = sqrt(rVar) / PERC_AREA * 100,
-               PERC_AREA_VAR = rVar,
+               rVar = (1/atEst^2) * (aVar + (PERC_AREA^2 * atVar) - (2 * PERC_AREA * aCV)),
+
+               ## Convert to percentage
+               PERC_AREA = PERC_AREA * 100,
+               rVar = rVar * (100^2),
+
+               ## Ratio variances
+               # These aren't truly negative values, but come from rounding errors
+               # when PERC_AREA = 100, i.e., estimated variance is 0
+               PERC_AREA_SE = case_when(rVar < 0 ~ 0,
+                                        TRUE ~ sqrt(rVar) / PERC_AREA * 100),
+               PERC_AREA_VAR = case_when(rVar < 0 ~ 0,
+                                         TRUE ~ rVar),
+
                #N = sum(N),
                AREA_TOTAL_VAR = aVar,
                nPlots_AREA = plotIn_AREA) %>%
         select(grpBy, PERC_AREA, AREA_TOTAL, PERC_AREA_SE, AREA_TOTAL_SE, PERC_AREA_VAR, AREA_TOTAL_VAR, nPlots_AREA, N)
     })
 
-    # Snag the names
-    tNames <- names(tOut)[names(tOut) %in% grpBy == FALSE]
 
     if (variance) {
       tOut <- tOut %>%
@@ -405,6 +417,9 @@ area <- function(db,
       tOut <- tOut %>%
         select(-c(AREA_TOTAL_VAR, PERC_AREA_VAR, N))
     }
+
+    # Snag the names
+    tNames <- names(tOut)[names(tOut) %in% grpBy == FALSE]
 
   }
 

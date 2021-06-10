@@ -82,7 +82,7 @@ arealSumPrep1 <- function(polys){
 }
 
 ## Do the spatial intersection of plots w/ polgyons
-arealSumPrep2 <- function(db, grpBy, polys, nCores){
+arealSumPrep2 <- function(db, grpBy, polys, nCores, remote){
 
   ## Make plot data spatial, projected same as polygon layer
   pltSF <- select(db$PLOT, c('LON', 'LAT', pltID)) %>%
@@ -120,13 +120,31 @@ arealSumPrep2 <- function(db, grpBy, polys, nCores){
 
   # A warning
   if (length(unique(pltSF$pltID)) < 1){
-    stop('No plots in db overlap with polys.')
+    if (!remote) {
+      stop('No plots in db overlap with polys.')
+    } else {
+      return()
+    }
   }
+
   ## Add polygon names to PLOT
   db$PLOT <- db$PLOT %>%
     left_join(select(pltSF, polyID, pltID), by = 'pltID')
 
   return(db)
+
+}
+
+## If a state missing a ROI completely, skip it when remote
+## Primary purpose is to throw a warning when no overlap is present
+dropStatesOutsidePolys <- function(x) {
+  x <- x[x != 'no plots in polys']
+
+  if (length(x) < 1) {
+    stop('No plots in db overlap with polys.')
+  }
+
+  return(x)
 
 }
 
@@ -269,6 +287,18 @@ handleTX <- function(db){
   return(db)
 }
 
+## As of Apr 2021, WY labels 2018 and 2019 inventories as 2020. This breaks rFIA,
+## so we manually reset these labels to their appropriate values here
+handleWY <- function(db){
+  if ('POP_EVAL' %in% names(db)) {
+    db$POP_EVAL <- db$POP_EVAL %>%
+      mutate(END_INVYR = case_when(EVALID %in% c(561800, 561801, 561803, 561807) ~ as.numeric(2018),
+                                   EVALID %in% c(561900, 561901, 561903, 561907, 561909, 561910) ~ as.numeric(2019),
+                                   TRUE ~ as.numeric(END_INVYR)))
+  }
+  return(db)
+}
+
 ## Land type domain indicator
 landTypeDomain <- function(landType, COND_STATUS_CD, SITECLCD, RESERVCD) {
   if (tolower(landType) == 'forest'){
@@ -276,13 +306,13 @@ landTypeDomain <- function(landType, COND_STATUS_CD, SITECLCD, RESERVCD) {
   } else if (tolower(landType) == 'timber'){
     landD <- ifelse(COND_STATUS_CD == 1 & SITECLCD %in% c(1, 2, 3, 4, 5, 6) & RESERVCD == 0, 1, 0)
   } else if (tolower(landType) == 'non-forest'){
-    landD <- ifelse(COND_STATUS_CD == 2)
+    landD <- ifelse(COND_STATUS_CD == 2, 1, 0)
   } else if (tolower(landType) == 'water'){
-    landD <- ifelse(COND_STATUS_CD == 3 | COND_STATUS_CD == 4)
+    landD <- ifelse(COND_STATUS_CD == 3 | COND_STATUS_CD == 4, 1, 0)
   } else if (tolower(landType) == 'census water'){
-    landD <- ifelse(COND_STATUS_CD == 4)
+    landD <- ifelse(COND_STATUS_CD == 3, 1, 0)
   } else if (tolower(landType) == 'non-census water'){
-    landD <- ifelse(COND_STATUS_CD == 4)
+    landD <- ifelse(COND_STATUS_CD == 4, 1, 0)
   } else if (tolower(landType) == 'all') {
     landD <- 1
   }
@@ -304,13 +334,13 @@ treeTypeDomain <- function(treeType, STATUSCD, DIA, TREECLCD) {
   return(typeD)
 }
 
-typeDomain_grow <- function(db, treeType, landType, type) {
+typeDomain_grow <- function(db, treeType, landType, type, stateVar = NULL) {
 
   if (type == 'vr'){
     if (tolower(landType) == 'forest'){
       db$COND$landD <- ifelse(db$COND$COND_STATUS_CD == 1, 1, 0)
       # Tree Type domain indicator
-      if (tolower(treeType) == 'live'){
+      if (tolower(treeType) %in% c('live', 'all')){
         db$TREE$typeD <- 1
         ## Rename some variables in grm
         db$TREE_GRM_COMPONENT <- rename(db$TREE_GRM_COMPONENT,
@@ -332,7 +362,7 @@ typeDomain_grow <- function(db, treeType, landType, type) {
     } else if (tolower(landType) == 'timber'){
       db$COND$landD <- ifelse(db$COND$COND_STATUS_CD == 1 & db$COND$SITECLCD %in% c(1, 2, 3, 4, 5, 6) & db$COND$RESERVCD == 0, 1, 0)
       # Tree Type domain indicator
-      if (tolower(treeType) == 'live'){
+      if (tolower(treeType)  %in% c('live', 'all')){
         db$TREE$typeD <- 1
         ## Rename some variables in grm
         db$TREE_GRM_COMPONENT <- rename(db$TREE_GRM_COMPONENT,
@@ -352,13 +382,45 @@ typeDomain_grow <- function(db, treeType, landType, type) {
                                         COMPONENT = SUBP_COMPONENT_GS_TIMBER)
       }
     }
+
+
+    # ## If 'live' then we exclude trees that have died or recruited during remeasurement
+    # if (tolower(treeType) == 'live') {
+    #   status <- db$TREE %>%
+    #     select(CN, PREV_TRE_CN, STATUSCD) %>%
+    #     left_join(select(db$TREE, CN, STATUSCD),
+    #               by = c('PREV_TRE_CN' = 'CN'),
+    #               suffix = c('1', '2')) %>%
+    #     ## If statuscd is ever anything but 1,
+    #     ## exclude it from analysis
+    #     mutate(typeD = case_when(STATUSCD1 == 1 & STATUSCD2 == 1 ~ 1,
+    #                              TRUE ~ 0))
+    #   db$TREE$typeD <- status$typeD
+    # }
+
   } else if (type == 'gm') {
     ## Build domain indicator function which is 1 if observation meets criteria, and 0 otherwise
     # Land type domain indicator
     if (tolower(landType) == 'forest'){
       db$COND$landD <- ifelse(db$COND$COND_STATUS_CD == 1, 1, 0)
+
       # Tree Type domain indicator
-      if (tolower(treeType) == 'all'){
+      if (toupper(stateVar) %in% c('SAWVOL', 'SAWVOL_BF')) {
+        db$TREE$typeD <- 1
+        ## Rename some variables in grm
+        db$TREE_GRM_COMPONENT <- rename(db$TREE_GRM_COMPONENT,
+                                        TPAMORT_UNADJ = SUBP_TPAMORT_UNADJ_SL_FOREST,
+                                        TPAREMV_UNADJ = SUBP_TPAREMV_UNADJ_SL_FOREST,
+                                        TPAGROW_UNADJ = SUBP_TPAGROW_UNADJ_SL_FOREST,
+                                        SUBPTYP_GRM = SUBP_SUBPTYP_GRM_SL_FOREST,
+                                        COMPONENT = SUBP_COMPONENT_SL_FOREST) %>%
+          mutate(TPARECR_UNADJ = case_when(
+            is.na(COMPONENT) ~ NA_real_,
+            COMPONENT %in% c('INGROWTH', 'CUT2', 'MORTALITY2') ~ TPAGROW_UNADJ,
+            TRUE ~ 0))
+
+
+      } else if (tolower(treeType) == 'all'){
         db$TREE$typeD <- 1
         ## Rename some variables in grm
         db$TREE_GRM_COMPONENT <- rename(db$TREE_GRM_COMPONENT,
@@ -390,11 +452,32 @@ typeDomain_grow <- function(db, treeType, landType, type) {
             COMPONENT %in% c('INGROWTH', 'CUT2', 'MORTALITY2') ~ TPAGROW_UNADJ,
             TRUE ~ 0))
       }
+
     } else if (tolower(landType) == 'timber'){
       db$COND$landD <- ifelse(db$COND$COND_STATUS_CD == 1 & db$COND$SITECLCD %in% c(1, 2, 3, 4, 5, 6) & db$COND$RESERVCD == 0, 1, 0)
+
+      ## A general fix for land domain issues on timberland, i.e., trees on non-timberland being included
+      db$TREE <- db$TREE %>%
+        left_join(select(db$COND, PLT_CN, CONDID, landD), by = c('PLT_CN', 'CONDID')) %>%
+        mutate(typeD = landD) %>%
+        select(-c('landD'))
+
       # Tree Type domain indicator
-      if (tolower(treeType) == 'all'){
-        db$TREE$typeD <- 1
+      if (toupper(stateVar) %in% c('SAWVOL', 'SAWVOL_BF')) {
+        ## Rename some variables in grm
+        db$TREE_GRM_COMPONENT <- rename(db$TREE_GRM_COMPONENT,
+                                        TPAMORT_UNADJ = SUBP_TPAMORT_UNADJ_SL_TIMBER,
+                                        TPAREMV_UNADJ = SUBP_TPAREMV_UNADJ_SL_TIMBER,
+                                        TPAGROW_UNADJ = SUBP_TPAGROW_UNADJ_SL_TIMBER,
+                                        SUBPTYP_GRM = SUBP_SUBPTYP_GRM_SL_TIMBER,
+                                        COMPONENT = SUBP_COMPONENT_SL_TIMBER) %>%
+          mutate(TPARECR_UNADJ = case_when(
+            is.na(COMPONENT) ~ NA_real_,
+            COMPONENT %in% c('INGROWTH', 'CUT2', 'MORTALITY2') ~ TPAGROW_UNADJ,
+            TRUE ~ 0))
+
+
+      } else if (tolower(treeType) == 'all'){
         ## Rename some variables in grm
         db$TREE_GRM_COMPONENT <- rename(db$TREE_GRM_COMPONENT,
                                         TPAMORT_UNADJ = SUBP_TPAMORT_UNADJ_AL_TIMBER,
@@ -413,17 +496,17 @@ typeDomain_grow <- function(db, treeType, landType, type) {
         #     STATUSCD %in% 1:2 & DIA >=5 ~ 1,
         #     STATUSCD == 3 & PREVDIA >=5 ~ 1,
         #     TRUE ~ 0))
-        db$TREE$typeD <- 1
         db$TREE_GRM_COMPONENT <- rename(db$TREE_GRM_COMPONENT,
                                         TPAMORT_UNADJ = SUBP_TPAMORT_UNADJ_GS_TIMBER,
                                         TPAREMV_UNADJ = SUBP_TPAREMV_UNADJ_GS_TIMBER,
                                         TPAGROW_UNADJ = SUBP_TPAGROW_UNADJ_GS_TIMBER,
                                         SUBPTYP_GRM = SUBP_SUBPTYP_GRM_GS_TIMBER,
-                                        COMPONENT = SUBP_COMPONENT_GS_TIMBER)%>%
+                                        COMPONENT = SUBP_COMPONENT_GS_TIMBER )%>%
           mutate(TPARECR_UNADJ = case_when(
             is.na(COMPONENT) ~ NA_real_,
             COMPONENT %in% c('INGROWTH', 'CUT2', 'MORTALITY2') ~ TPAGROW_UNADJ,
             TRUE ~ 0))
+
       }
     }
   }
@@ -521,12 +604,13 @@ handlePops <- function(db, evalType, method, mr, pltList = NULL, ga = FALSE){
   ### The population tables
   pops <- select(db$POP_EVAL, c('EVALID', 'ESTN_METHOD', 'CN', 'END_INVYR', 'EVAL_TYP', any_of(gaVars))) %>%
     rename(EVAL_CN = CN) %>%
-    left_join(select(db$POP_ESTN_UNIT, c('CN', 'EVAL_CN', 'AREA_USED', 'P1PNTCNT_EU')), by = c('EVAL_CN')) %>%
+    left_join(select(db$POP_ESTN_UNIT, c('CN', 'EVAL_CN', 'AREA_USED', 'P1PNTCNT_EU', any_of(c('p2eu', 'nStrata')))), by = c('EVAL_CN')) %>%
     rename(ESTN_UNIT_CN = CN) %>%
     left_join(select(db$POP_STRATUM, c('ESTN_UNIT_CN', 'EXPNS', 'P2POINTCNT', 'CN', 'P1POINTCNT', 'ADJ_FACTOR_SUBP', 'ADJ_FACTOR_MICR', "ADJ_FACTOR_MACR")), by = c('ESTN_UNIT_CN')) %>%
     rename(STRATUM_CN = CN) %>%
     distinct(EVALID, ESTN_UNIT_CN, STRATUM_CN, .keep_all = TRUE) %>%
-    left_join(select(db$POP_PLOT_STRATUM_ASSGN, c('STRATUM_CN', 'PLT_CN', 'INVYR', 'STATECD')), by = 'STRATUM_CN') %>%
+    left_join(select(db$POP_PLOT_STRATUM_ASSGN, c('STRATUM_CN', 'PLT_CN', 'INVYR', 'STATECD',
+                                                  any_of(c('p2eu_INVYR', 'nStrata_INVYR', 'P2POINTCNT_INVYR')))), by = 'STRATUM_CN') %>%
     distinct(EVALID, ESTN_UNIT_CN, STRATUM_CN, PLT_CN, .keep_all = TRUE) %>%
     ungroup() %>%
     mutate_if(is.factor,
@@ -541,17 +625,23 @@ handlePops <- function(db, evalType, method, mr, pltList = NULL, ga = FALSE){
 
   ## P2POINTCNT column is NOT consistent for annual estimates, plots
   ## within individual strata and est units are related to different INVYRs
-  pops <- pops %>%
-    ## Count of plots by Stratum/INVYR
-    group_by(EVALID, ESTN_UNIT_CN, STRATUM_CN, INVYR) %>%
-    mutate(P2POINTCNT_INVYR = n()) %>%
-    ## By unit / INVYR
-    group_by(EVALID, ESTN_UNIT_CN, INVYR) %>%
-    mutate(p2eu_INVYR = n()) %>%
-    ## By unit for entire cycle
-    group_by(EVALID, ESTN_UNIT_CN) %>%
-    mutate(p2eu = n()) %>%
-    ungroup()
+
+  ## Only run if this wasn't already done in clipFIA
+  if (!any(c('p2eu', 'p2eu_INVYR', 'P2POINTCNT_INVYR') %in% names(pops))) {
+    pops <- pops %>%
+      ## Count of plots by Stratum/INVYR
+      group_by(EVALID, ESTN_UNIT_CN, STRATUM_CN, INVYR) %>%
+      mutate(P2POINTCNT_INVYR = n()) %>%
+      ## By unit / INVYR
+      group_by(EVALID, ESTN_UNIT_CN, INVYR) %>%
+      mutate(p2eu_INVYR = n()) %>%
+      ## By unit for entire cycle
+      group_by(EVALID, ESTN_UNIT_CN) %>%
+      mutate(p2eu = n()) %>%
+      ungroup()
+
+  }
+
 
   ## Recode a few of the estimation methods to make things easier below
   pops$ESTN_METHOD = recode(.x = pops$ESTN_METHOD,
@@ -586,22 +676,38 @@ mergeSmallStrata <- function(db, pops) {
   ## strata are sampled in a given year
   pops$P1POINTCNT_INVYR <- pops$P1POINTCNT
 
-  ## Stratum year pairs
-  stratYr <- pops %>%
-    left_join(select(db$POP_STRATUM, CN, STRATUM_DESCR), by = c('STRATUM_CN' = 'CN')) %>%
-    distinct(STATECD, ESTN_UNIT_CN, STRATUM_CN, STRATUM_DESCR, INVYR,
-             P2POINTCNT, P1POINTCNT, P2POINTCNT_INVYR, P1POINTCNT_INVYR, stratID) %>%
-    ## If buffer is present in the name, then the stratum has a different intensity
-    ## than other strata in the same estimation unit (PNW only).
-    ## Only combine buffer w/ buffer
-    mutate(buff = str_detect(STRATUM_DESCR, 'buff') & STATECD %in% c(53, 41, 6)) %>%
-    mutate(wrong = P2POINTCNT_INVYR < 2) %>%
-    group_by(ESTN_UNIT_CN, INVYR) %>%
-    mutate(nStrata_INVYR = length(unique(STRATUM_CN))) %>%
-    group_by(ESTN_UNIT_CN) %>%
-    mutate(nStrata = length(unique(STRATUM_CN))) %>%
-    ungroup() %>%
-    arrange(P2POINTCNT_INVYR)
+  if (any(c('nStrata', 'nStrata_INVYR') %in% names(pops))) {
+    ## Stratum year pairs
+    stratYr <- pops %>%
+      left_join(select(db$POP_STRATUM, CN, STRATUM_DESCR), by = c('STRATUM_CN' = 'CN')) %>%
+      distinct(STATECD, ESTN_UNIT_CN, STRATUM_CN, STRATUM_DESCR, INVYR,
+               P2POINTCNT, P1POINTCNT, P2POINTCNT_INVYR, P1POINTCNT_INVYR, stratID,
+               nStrata, nStrata_INVYR) %>%
+      ## If buffer is present in the name, then the stratum has a different intensity
+      ## than other strata in the same estimation unit (PNW only).
+      ## Only combine buffer w/ buffer
+      mutate(buff = str_detect(STRATUM_DESCR, 'buff') & STATECD %in% c(53, 41, 6)) %>%
+      mutate(wrong = P2POINTCNT_INVYR < 2) %>%
+      arrange(P2POINTCNT_INVYR)
+  } else {
+    ## Stratum year pairs
+    stratYr <- pops %>%
+      left_join(select(db$POP_STRATUM, CN, STRATUM_DESCR), by = c('STRATUM_CN' = 'CN')) %>%
+      distinct(STATECD, ESTN_UNIT_CN, STRATUM_CN, STRATUM_DESCR, INVYR,
+               P2POINTCNT, P1POINTCNT, P2POINTCNT_INVYR, P1POINTCNT_INVYR, stratID) %>%
+      ## If buffer is present in the name, then the stratum has a different intensity
+      ## than other strata in the same estimation unit (PNW only).
+      ## Only combine buffer w/ buffer
+      mutate(buff = str_detect(STRATUM_DESCR, 'buff') & STATECD %in% c(53, 41, 6)) %>%
+      mutate(wrong = P2POINTCNT_INVYR < 2) %>%
+      group_by(ESTN_UNIT_CN, INVYR) %>%
+      mutate(nStrata_INVYR = length(unique(STRATUM_CN))) %>%
+      group_by(ESTN_UNIT_CN) %>%
+      mutate(nStrata = length(unique(STRATUM_CN))) %>%
+      ungroup() %>%
+      arrange(P2POINTCNT_INVYR)
+  }
+
 
   ## Check if any fail
   warnMe <- c()
@@ -819,19 +925,25 @@ maWeights <- function(pops, method, lambda){
 ## most recent in WI, combine them and label as 2017
 combineMR <- function(x, grpBy){
 
-  suppressMessages({suppressWarnings({
+  ## Used to let max year vary by group -- causes issues for ratio estimates though
+  ## so scrapping it and taking the most recent independent of group
+  # suppressMessages({suppressWarnings({
+  #
+  #   maxyears <- x %>%
+  #     select(all_of(grpBy)) %>%
+  #     group_by(.dots = grpBy[!c(grpBy %in% 'YEAR')]) %>%
+  #     summarise(YEAR = max(YEAR, na.rm = TRUE))
+  #
+  #   out <- x %>%
+  #     ungroup() %>%
+  #     select(-c(YEAR)) %>%
+  #     left_join(maxyears, by = grpBy[!c(grpBy %in% 'YEAR')])
+  #
+  # })})
 
-    maxyears <- x %>%
-      select(all_of(grpBy)) %>%
-      group_by(.dots = grpBy[!c(grpBy %in% 'YEAR')]) %>%
-      summarise(YEAR = max(YEAR, na.rm = TRUE))
-
-    out <- x %>%
-      ungroup() %>%
-      select(-c(YEAR)) %>%
-      left_join(maxyears, by = grpBy[!c(grpBy %in% 'YEAR')])
-
-  })})
+  out <- x %>%
+    ungroup() %>%
+    mutate(YEAR = max(YEAR, na.rm = TRUE))
 
   return(out)
 }
@@ -870,6 +982,14 @@ prettyNamesSF <- function (tOut, polys, byPlot, grpBy, grpByOrig, tNames, return
 
 ## Choose annual panels to return
 filterAnnual <- function(x, grpBy, pltsVar, ESTN_UNIT) {
+
+  ## Have to handle statecd carefully in grp by
+  if ('STATECD' %in% grpBy) {
+    grpBy <- grpBy[!c(grpBy %in% 'STATECD')]
+    x <- x %>%
+      ungroup() %>%
+      select(-c(STATECD))
+  }
   pltquo <- rlang::enquo(pltsVar)
   x <- x %>%
     left_join(distinct(select(ESTN_UNIT, CN, STATECD)), by = c('ESTN_UNIT_CN' = 'CN')) %>%

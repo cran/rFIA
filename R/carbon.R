@@ -78,7 +78,10 @@ carbonStarter <- function(x,
     ## Add shapefile names to grpBy
     grpBy = c(grpBy, 'polyID')
     ## Do the intersection
-    db <- arealSumPrep2(db, grpBy, polys, nCores)
+    db <- arealSumPrep2(db, grpBy, polys, nCores, remote)
+
+    ## If there's nothing there, skip the state
+    if (is.null(db)) return('no plots in polys')
   }
 
   ## If we want to return spatial plots
@@ -346,6 +349,7 @@ carbon <- function(db,
                 totals, byPlot, nCores, remote, mr)
   ## Bring the results back
   out <- unlist(out, recursive = FALSE)
+  if (remote) out <- dropStatesOutsidePolys(out)
   tEst <- bind_rows(out[names(out) == 'tEst'])
   grpBy <- out[names(out) == 'grpBy'][[1]]
   grpByOrig <- out[names(out) == 'grpByOrig'][[1]]
@@ -396,7 +400,7 @@ carbon <- function(db,
                CARB_TOTAL_SE = sqrt(caVar) / CARB_TOTAL *100,
                ## Var total
                AREA_TOTAL_VAR = aVar,
-               CARB_TOTAL_VAR = caVar,
+               CARB_TOTAL_VAR = cVar,
                ## nPlots
                nPlots_TREE = plotIn_TREE,
                nPlots_AREA = plotIn_AREA)

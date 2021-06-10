@@ -48,7 +48,7 @@ growMortStarter <- function(x,
   if (treeType %in% c('live', 'dead', 'gs', 'all') == FALSE){
     stop('treeType must be one of: "live", "dead", "gs", or "all".')
   }
-  if (any(reqTables %in% names(db) == FALSE)){
+  if (any(reqTables[!c(reqTables %in% 'SUBP_COND_CHNG_MTRX')] %in% names(db) == FALSE)){
     missT <- reqTables[reqTables %in% names(db) == FALSE]
     stop(paste('Tables', paste (as.character(missT), collapse = ', '),
                'not found in object db.'))
@@ -100,7 +100,10 @@ growMortStarter <- function(x,
     ## Add shapefile names to grpBy
     grpBy = c(grpBy, 'polyID')
     ## Do the intersection
-    db <- arealSumPrep2(db, grpBy, polys, nCores)
+    db <- arealSumPrep2(db, grpBy, polys, nCores, remote)
+
+    ## If there's nothing there, skip the state
+    if (is.null(db)) return('no plots in polys')
   }
 
   ## If we want to return spatial plots
@@ -118,6 +121,9 @@ growMortStarter <- function(x,
   } else if (str_to_upper(stateVar) == 'SAWVOL'){
     db$TREE_GRM_MIDPT$state <- db$TREE_GRM_MIDPT$VOLCSNET
     db$TREE$state_recr <- db$TREE$VOLCSNET
+  } else if (str_to_upper(stateVar) == 'SAWVOL_BF'){
+    db$TREE_GRM_MIDPT$state <- db$TREE_GRM_MIDPT$VOLBFNET
+    db$TREE$state_recr <- db$TREE$VOLBFNET
   } else if (str_to_upper(stateVar) == 'NETVOL'){
     db$TREE_GRM_MIDPT$state <- db$TREE_GRM_MIDPT$VOLCFNET
     db$TREE$state_recr <- db$TREE$VOLCFNET
@@ -143,7 +149,7 @@ growMortStarter <- function(x,
     db$TREE_GRM_MIDPT$state <- (db$TREE_GRM_MIDPT$DRYBIO_AG + db$TREE_GRM_MIDPT$DRYBIO_BG) * .5
     db$TREE$state_recr <- (db$TREE$DRYBIO_AG + db$TREE$DRYBIO_BG) * .5
   } else {
-    stop(paste0('Method not known for stateVar: ', stateVar, '. Please choose one of: TPA, BAA, SAWVOL, NETVOL, BIO_AG, BIO_BG, BIO, CARB_AG, CARB_BG, or CARB.' ))
+    stop(paste0('Method not known for stateVar: ', stateVar, '. Please choose one of: TPA, BAA, SAWVOL, SAWVOL_BF, NETVOL, BIO_AG, BIO_BG, BIO, CARB_AG, CARB_BG, or CARB.' ))
   }
 
 
@@ -153,7 +159,7 @@ growMortStarter <- function(x,
 
   ## Build a domain indicator for each observation (1 or 0) --------------------
   ## Land type and tree type combined
-  db <- typeDomain_grow(db, treeType, landType, type = 'gm')
+  db <- typeDomain_grow(db, treeType, landType, type = 'gm', stateVar)
 
   ## Spatial boundary
   if(!is.null(polys)){
@@ -248,9 +254,13 @@ growMortStarter <- function(x,
   db$TREE_GRM_MIDPT <- db$TREE_GRM_MIDPT %>%
     select(c('TRE_CN', 'DIA', 'state')) %>%
     filter(TRE_CN %in% db$TREE$TRE_CN)
-  db$SUBP_COND_CHNG_MTRX <- select(db$SUBP_COND_CHNG_MTRX, PLT_CN, PREV_PLT_CN,
-                                   SUBPTYP, SUBPTYP_PROP_CHNG, PREVCOND, CONDID) %>%
-    filter(PLT_CN %in% c(db$PLOT$PLT_CN, db$PLOT$PREV_PLT_CN))
+
+  if ('SUBP_COND_CHNG_MTRX' %in% names(db)) {
+    db$SUBP_COND_CHNG_MTRX <- select(db$SUBP_COND_CHNG_MTRX, PLT_CN, PREV_PLT_CN,
+                                     SUBPTYP, SUBPTYP_PROP_CHNG, PREVCOND, CONDID) %>%
+      filter(PLT_CN %in% c(db$PLOT$PLT_CN, db$PLOT$PREV_PLT_CN))
+  }
+
 
 
   # Separate area grouping names from tree grouping names
@@ -446,6 +456,7 @@ growMort <- function(db,
                 totals, byPlot, nCores, remote, mr)
   ## Bring the results back
   out <- unlist(out, recursive = FALSE)
+  if (remote) out <- dropStatesOutsidePolys(out)
   aEst <- bind_rows(out[names(out) == 'aEst'])
   tEst <- bind_rows(out[names(out) == 'tEst'])
   grpBy <- out[names(out) == 'grpBy'][[1]]
