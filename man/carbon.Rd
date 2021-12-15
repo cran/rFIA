@@ -4,14 +4,13 @@
 \title{Estimate carbon stocks by IPCC forest carbon pools from the FIADB}
 
 \description{
-\lifecycle{stable}
 Produces estimates of carbon (\emph{metric tonnes}) on a per acre basis from FIA data, along with population estimates for each variable. Estimates are consistent with those used in the EPA's Greenhouse Gas Inventory Estimates. Can be produced for regions defined within the FIA Database (e.g. counties), at the plot level, or within user-defined areal units. Options to group estimates by species, size class, and other variables defined in the FIADB. If multiple reporting years (EVALIDs) are included in the data, estimates will be output as a time series. If multiple states are represented by the data, estimates will be output for the full region (all area combined), unless specified otherwise (e.g. \code{grpBy = STATECD}).}
 \usage{
 carbon(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
        byPool = TRUE, byComponent = FALSE, modelSnag = TRUE,
        landType = "forest", method = "TI", lambda = 0.5,
        areaDomain = NULL, totals = FALSE, variance = FALSE,
-       byPlot = FALSE, nCores = 1)
+       byPlot = FALSE, condList = FALSE, nCores = 1)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -29,7 +28,7 @@ carbon(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
 
   \item{modelSnag}{logical; if TRUE, return modeled estimates of standing dead wood (i.e., snag) carbon (not a direct sum of actual dead wood observatiosn). Otherwise use observations (P2) of standing dead wood carbon in estimation.}
 
-  \item{landType}{character ("forest" or "timber"); Type of land that estimates will be produced for. Timberland is a subset of forestland (default) which has high site potential and non-reserve status (see details).}
+  \item{landType}{character ("forest", "timber", or "all"); Type of land that estimates will be produced for. Timberland is a subset of forestland (default) which has high site potential and non-reserve status (see details). When "forest" or "all", ratios represent average forest carbon density \emph{on forest or timberland}, i.e., non-forested conditions are excluded. When "all", ratios represent average forest carbon density across all land uses, including non-forest. }
 
   \item{method}{character; design-based estimator to use. One of:  "TI" (temporally indifferent, default), "annual" (annual), "SMA"" (simple moving average), "LMA" (linear moving average), or "EMA" (exponential moving average). See \href{https://www.fs.fed.us/nrs/pubs/jrnl/2020/nrs_2020_stanke_001.pdf}{Stanke et al 2020} for a complete description of these estimators.}
 
@@ -42,6 +41,8 @@ carbon(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
     \item{variance}{logical; if TRUE, return estimated variance (\code{VAR}) and sample size (\code{N}). If FALSE, return 'sampling error' (\code{SE}) as returned by EVALIDator. Note: sampling error cannot be used to construct confidence intervals.}
 
   \item{byPlot}{logical; if TRUE, returns estimates for individual plot locations instead of population estimates.}
+
+  \item{condList}{logical; if TRUE, returns condition-level summaries intended for subsequent use with \code{\link{customPSE}}.}
 
   \item{nCores}{numeric; number of cores to use for parallel implementation. Check available cores using \code{\link{detectCores}}. Default = 1, serial processing.}
 }

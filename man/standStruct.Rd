@@ -5,7 +5,6 @@
 }
 
 \description{
-\lifecycle{questioning}
 Estimates the stand structural stage distribution of an area of forest/ timberland from FIA data. Estimates can be produced for regions defined within the FIA Database (e.g. counties), at the plot level, or within user-defined areal units. If multiple reporting years (EVALIDs) are included in the data, estimates will be output as a time series. Easy options to implement parallel processing. Stand structural stage is classified for each stand (condition) using a method similar to that of Frelich and Lorimer (1991) but substitute basal area for exposed crown area (see Details, References). If multiple states are represented by the data, estimates will be output for the full region (all area combined), unless specified otherwise (e.g. \code{grpBy = STATECD}).
 }
 
@@ -13,7 +12,7 @@ Estimates the stand structural stage distribution of an area of forest/ timberla
 standStruct(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
             landType = 'forest', method = 'TI', lambda = .5,
             areaDomain = NULL, totals = FALSE, variance = FALSE,
-            byPlot = FALSE, tidy = TRUE, nCores = 1)
+            byPlot = FALSE, nCores = 1)
 }
 
 %- maybe also 'usage' for other objects documented here.
@@ -39,8 +38,6 @@ standStruct(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
     \item{variance}{logical; if TRUE, return estimated variance (\code{VAR}) and sample size (\code{N}). If FALSE, return 'sampling error' (\code{SE}) as returned by EVALIDator. Note: sampling error cannot be used to construct confidence intervals.}
 
   \item{byPlot}{logical; if TRUE, returns estimates for individual plot locations instead of population estimates.}
-
-  \item{tidy}{logical; if TRUE, returns estimates grouped by structural stage, rather than including individual columns for each stand structural stage (For use in tidyverse packages, e.g. \code{ggplot2}, \code{\link{dplyr}}). Not recommended when returning spatial objects (\code{returnSpatial = TRUE}), for consistency with shapefile data structures. }
 
   \item{nCores}{numeric; number of cores to use for parallel implementation. Check available cores using \code{\link{detectCores}}. Default = 1, serial processing.}
 }
@@ -136,21 +133,12 @@ standStruct(fiaRI_mr)
 
 \donttest{
 ## Same as above at plot-level (classify stands)
-standStruct(fiaRI_mr)
-
-## Same as above, but output contains seperate column for each structural stage,
-##   rathern than grouping variable
-standStruct(fiaRI_mr, tidy = FALSE)
+standStruct(fiaRI_mr,
+            byPlot = TRUE)
 
 ## Calculate structural stage distribution of all forestland by owner group, over time
 standStruct(fiaRI_mr,
             grpBy = OWNGRPCD)
-
-## Same as above, but implemented in parallel
-parallel::detectCores(logical = FALSE) # 4 cores available, we will take 2
-standStruct(fiaRI_mr,
-            grpBy = OWNGRPCD,
-            nCores = 2)
 
 ## Calculate structural stage distribution of all forestland on xeric sites, over time
 standStruct(fiaRI_mr,
@@ -159,13 +147,5 @@ standStruct(fiaRI_mr,
 ## Calculate structural stage distribution of all forestland, over time
 standStruct(fiaRI)
 
-## Calculate structural stage distribution of all forestland by county and return
-#   return spatial object
-sdSF <- standStruct(fiaRI_mr,
-            polys = countiesRI,
-            returnSpatial = TRUE,
-            tidy = FALSE)
-plot(sdSF)
-plotFIA(sdSF, POLE_PERC)
 }
 }

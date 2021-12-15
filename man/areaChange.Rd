@@ -3,7 +3,6 @@
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{Estimate land area change from the FIADB}
 \description{
-\lifecycle{experimental}
 Produces estimates of annual net and component change in land area (acreage) from FIA data. Estimates can be produced for regions defined within the FIA Database (e.g. counties), at the plot level, or within user-defined areal units. Options to group estimates by species, size class, and other variables defined in the FIADB. If multiple reporting years (EVALIDs) are included in the data, estimates will be output as a time series. If multiple states are represented by the data, estimates will be output for the full region (all area combined), unless specified otherwise (e.g. grpBy = STATECD). }
 
 
@@ -12,7 +11,7 @@ areaChange(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
            byLandType = FALSE, landType = "forest", method = "TI",
            lambda = 0.5, treeDomain = NULL, areaDomain = NULL,
            totals = FALSE, variance = FALSE, byPlot = FALSE,
-           chngType = 'net', nCores = 1)
+           condList = FALSE, chngType = 'net', nCores = 1)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -41,6 +40,8 @@ areaChange(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
     \item{variance}{logical; if TRUE, return estimated variance (\code{VAR}) and sample size (\code{N}). If FALSE, return 'sampling error' (\code{SE}) as returned by EVALIDator. Note: sampling error cannot be used to construct confidence intervals.}
 
   \item{byPlot}{logical; if TRUE, returns estimates for individual plot locations instead of population estimates.}
+
+  \item{condList}{logical; if TRUE, returns condition-level summaries intended for subsequent use with \code{\link{customPSE}}.}
 
   \item{chngType}{character, one of "net" or "component"; if "net", produce estimates of net change in land area, and if "component", produce estimates of component change in land area (i.e., showing all shifts across classified attributes).}
 

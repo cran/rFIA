@@ -5,14 +5,14 @@
 \title{Estimate merchantable tree volume from the FIADB}
 
 \description{
-\lifecycle{maturing}
 Produces estimates of merchantable tree volume (i.e., merchantable bole volume and sawlog volume) on a per acre basis from FIA data, along with population estimates for each variable. Estimates can be produced for regions defined within the FIA Database (e.g. counties), at the plot level, or within user-defined areal units. Options to group estimates by species, size class, and other variables defined in the FIADB. If multiple reporting years (EVALIDs) are included in the data, estimates will be output as a time series. If multiple states are represented by the data, estimates will be output for the full region (all area combined), unless specified otherwise (e.g. \code{grpBy = STATECD}).}
 \usage{
 volume(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
        bySpecies = FALSE, bySizeClass = FALSE, landType = "forest",
        treeType = "live", volType = "net", method = "TI",
        lambda = 0.5, treeDomain = NULL, areaDomain = NULL,
-       totals = FALSE, variance = FALSE, byPlot = FALSE, nCores = 1)
+       totals = FALSE, variance = FALSE, byPlot = FALSE,
+       treeList = FALSE, nCores = 1)
 }
 
 \arguments{
@@ -47,6 +47,8 @@ volume(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
     \item{variance}{logical; if TRUE, return estimated variance (\code{VAR}) and sample size (\code{N}). If FALSE, return 'sampling error' (\code{SE}) as returned by EVALIDator. Note: sampling error cannot be used to construct confidence intervals.}
 
   \item{byPlot}{logical; if TRUE, returns estimates for individual plot locations instead of population estimates.}
+
+  \item{treeList}{logical; if TRUE, returns tree-level summaries intended for subsequent use with \code{\link{customPSE}}}.
 
   \item{nCores}{numeric; number of cores to use for parallel implementation. Check available cores using \code{\link{detectCores}}. Default = 1, serial processing.}
 }

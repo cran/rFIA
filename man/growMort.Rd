@@ -1,18 +1,17 @@
 \name{growMort}
 \alias{growMort}
 
-\title{Estimate recruitment, mortality, and harvest rates from FIADB}
+\title{Estimate growth, recruitment, mortality, and harvest rates from FIADB}
 
 \description{
-\lifecycle{stable}
-Produces estimates of annual regeneration, recruitment, natural mortality, and harvest rates from the Forest Inventory and Analysis Database (FIADB), along with population estimates for each variable. Estimates can be produced for regions defined within the FIA Database (e.g. counties), at the plot level, or within user-defined areal units. Options to group estimates by species, size class, and other variables defined in the FIADB. If multiple reporting years (EVALIDs) are included in the data, estimates will be output as a time series. If multiple states are represented by the data, estimates will be output for the full region (all area combined), unless specified otherwise (e.g. \code{grpBy = STATECD}). Easy options to implement parallel processing.}
+Produces estimates of annual growth, recruitment, natural mortality, and harvest rates from the Forest Inventory and Analysis Database (FIADB), along with population estimates for each variable. Estimates can be produced for regions defined within the FIA Database (e.g. counties), at the plot level, or within user-defined areal units. Options to group estimates by species, size class, and other variables defined in the FIADB. If multiple reporting years (EVALIDs) are included in the data, estimates will be output as a time series. If multiple states are represented by the data, estimates will be output for the full region (all area combined), unless specified otherwise (e.g. \code{grpBy = STATECD}). }
 
 \usage{
 growMort(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE, bySpecies = FALSE,
          bySizeClass = FALSE, landType = 'forest', treeType = 'all',
          method = 'TI', lambda = .5, stateVar = 'TPA', treeDomain = NULL,
          areaDomain = NULL, totals = FALSE, variance = FALSE,
-         byPlot = FALSE, nCores = 1)
+         byPlot = FALSE, treeList = FALSE, nCores = 1)
 }
 
 \arguments{
@@ -30,7 +29,7 @@ growMort(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE, bySpecies = FALS
 
   \item{landType}{character ("forest" or "timber""); Type of land that estimates will be produced for. Timberland is a subset of forestland (default) which has high site potential and non-reserve status (see details).}
 
-  \item{treeType}{character ("all", "live", "dead", or "gs"); Type of tree that estimates will be produced for. All (default) includes all stems, live and dead, greater than 1 in. DBH. Live/Dead includes all stems greater than 1 in. DBH which are live or dead (leaning less than 45 degrees), respectively. GS (growing-stock) includes live stems greater than 5 in. DBH which contain at least one 8 ft merchantable log.}
+  \item{treeType}{character ("all" or "gs"); Type of tree that estimates will be produced for. All (default) includes all stems, live and dead, greater than 1 in. DBH. GS (growing-stock) includes live stems greater than 5 in. DBH which contain at least one 8 ft merchantable log.}
 
   \item{method}{character; design-based estimator to use. One of:  "TI" (temporally indifferent, default), "annual" (annual), "SMA"" (simple moving average), "LMA" (linear moving average), or "EMA" (exponential moving average). See \href{https://www.fs.fed.us/nrs/pubs/jrnl/2020/nrs_2020_stanke_001.pdf}{Stanke et al 2020} for a complete description of these estimators.}
 
@@ -47,6 +46,8 @@ growMort(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE, bySpecies = FALS
       \item{variance}{logical; if TRUE, return estimated variance (\code{VAR}) and sample size (\code{N}). If FALSE, return 'sampling error' (\code{SE}) as returned by EVALIDator. Note: sampling error cannot be used to construct confidence intervals.}
 
   \item{byPlot}{logical; if TRUE, returns estimates for individual plot locations instead of population estimates.}
+
+  \item{treeList}{logical; if TRUE, returns tree-level summaries intended for subsequent use with \code{\link{customPSE}}.}
 
   \item{nCores}{numeric; number of cores to use for parallel implementation. Check available cores using \code{\link{detectCores}}. Default = 1, serial processing.}
 }
@@ -88,12 +89,16 @@ Dataframe or SF object (if \code{returnSpatial = TRUE}). If \code{byPlot = TRUE}
 
 \itemize{
       \item{\strong{YEAR}: reporting year associated with estimates}
-      \item{\strong{RECR_TPA}: estimate of mean annual recruitment as trees per acre}
-      \item{\strong{MORT_TPA}: estimate of mean annual mortality as trees per acre}
-      \item{\strong{REMV_TPA}: estimate of mean annual removals (harvest) as trees per acre}
-      \item{\strong{RECR_PERC}: estimate of mean percent of individuals subject to recruitment annually}
-      \item{\strong{MORT_PERC}: estimate of mean percent of individuals subject to mortality annually}
-      \item{\strong{REMV_PERC}: estimate of mean percent of individuals subject to removal (harvest) annually}
+      \item{\strong{RECR_*}: estimate of mean annual recruitment}
+      \item{\strong{MORT_*}: estimate of mean annual mortality}
+      \item{\strong{REMV_*}: estimate of mean annual removals (harvest)}
+      \item{\strong{GROW_*}: estimate of mean annual growth on survivors}
+      \item{\strong{CHNG_*}: estimate of mean annual net change (i.e., growth + recruitment - mortality - removals)}
+      \item{\strong{RECR_PERC}: estimate of mean percent of individuals subject to recruitment annually (recruitment / previous total)}
+      \item{\strong{MORT_PERC}: estimate of mean percent of individuals subject to mortality annually (mortality / previous total)}
+      \item{\strong{REMV_PERC}: estimate of mean percent of individuals subject to removal (harvest) annually (removals / previous total)}
+      \item{\strong{GROW_PERC}: estimate of mean annual growth on survivors (\%) (growth / previous total)}
+      \item{\strong{CHNG_PERC}: estimate of mean annual net change (\%) (net change / previous total)}
       \item{\strong{nPlots_TREE}: number of non-zero plots used to compute total tree estimates}
       \item{\strong{nPlots_RECR}: number of non-zero plots used to compute recruitment estimates}
       \item{\strong{nPlots_MORT}: number of non-zero plots used to compute mortality estimates}

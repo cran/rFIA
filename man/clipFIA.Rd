@@ -4,7 +4,6 @@
 }
 
 \description{
-\lifecycle{maturing}
 Performs space-time queries on Forest Inventory and Analysis Database (FIADB). Subset database to include only data associated with particular inventory years (i.e., most recent), and/or only data within a user-defined region. }
 
 \usage{

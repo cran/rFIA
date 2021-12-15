@@ -3,7 +3,6 @@
 \title{Estimate diversity from FIADB}
 
 \description{
-\lifecycle{maturing}
 Produces estimates of diversity from FIA data. Returns shannon's index, shannon's equitability, and richness for alpha (mean/SE of stands), beta, and gamma diversity. Default behavior estimates species diversity, using \code{TPA} as a state variable and \code{SPCD} to groups of individuals. Estimates can be produced for regions defined within the FIA Database (e.g. counties), at the plot level, or within user-defined areal units. Options to group estimates by size class and other variables defined in the FIADB. If multiple reporting years (EVALIDs) are included in the data, estimates will be output as a time series. If multiple states are represented by the data, estimates will be output for the full region (all area combined), unless specified otherwise (e.g. \code{grpBy = STATECD}).
 }
 
@@ -11,8 +10,8 @@ Produces estimates of diversity from FIA data. Returns shannon's index, shannon'
 diversity(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE, bySizeClass = FALSE,
           landType = 'forest', treeType = 'live', method = 'TI', lambda = .5,
           stateVar = TPA_UNADJ, grpVar = SPCD, treeDomain = NULL,
-          areaDomain = NULL, byPlot = FALSE, totals = FALSE, variance = FALSE,
-          nCores = 1)
+          areaDomain = NULL, byPlot = FALSE, condList = FALSE, totals = FALSE,
+          variance = FALSE, nCores = 1)
 }
 
 \arguments{
@@ -47,6 +46,8 @@ diversity(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE, bySizeClass = F
     \item{variance}{logical; if TRUE, return estimated variance (\code{VAR}) and sample size (\code{N}). If FALSE, return 'sampling error' (\code{SE}) as returned by EVALIDator. Note: sampling error cannot be used to construct confidence intervals.}
 
   \item{byPlot}{logical; if TRUE, returns estimates for individual plot locations instead of population estimates.}
+
+  \item{condList}{logical; if TRUE, returns condition-level summaries intended for subsequent use with \code{\link{customPSE}}.}
 
   \item{nCores}{numeric; number of cores to use for parallel implementation. Check available cores using \code{\link{detectCores}}. Default = 1, serial processing.}
 }
