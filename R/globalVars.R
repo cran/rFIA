@@ -235,7 +235,7 @@ utils::globalVariables(c('ADJ_FACTOR_MACR', 'ADJ_FACTOR_MICR', 'ADJ_FACTOR_SUBP'
                          'cvStrat_clg', 'cvStrat_cmd', 'cvStrat_cp', 'cvStrat_csm', 'cvStrat_v', 'cvStrat_vc',
                          'cvStrat_vlg', 'cvStrat_vmd', 'cvStrat_vp', 'cvStrat_vsm', 'element_rect',
                          'element_text', 'facet_wrap', 'geom_errorbar', 'geom_line', 'geom_sf', 'ggplot', 'ggsave',
-                         'ggtitle', 'installed.packages', 'labs', 'nsum', 'plotIn_', 'proj4string<-',
+                         'ggtitle', 'find.package', 'labs', 'nsum', 'plotIn_', 'proj4string<-',
                            'propSampled', 'scale_colour_viridis_c', 'scale_colour_viridis_d',
                          'scale_fill_viridis_c', 'stratID', 'stratWgt', 'stratWgt_INVYR', 'tD', 'tT', 'theme',
                          'theme_bw', 'theme_minimal', 'transition_manual', 'unit', 'waiver', 'xlab', 'ylab',
@@ -298,6 +298,8 @@ utils::globalVariables(c('ADJ_FACTOR_MACR', 'ADJ_FACTOR_MICR', 'ADJ_FACTOR_SUBP'
                          'CHNG_TOTAL_VAR', 'CURR_TOTAL', 'CURR_TOTAL_SE', 'CURR_TOTAL_VAR', 'GROW_PERC',
                          'GROW_PERC_VAR', 'GROW_TOTAL', 'GROW_TOTAL_VAR', 'GROW_TPA', 'GROW_TPA_VAR',
                          'PREV_TOTAL', 'PREV_TOTAL_SE', 'PREV_TOTAL_VAR', 'cPlot_cv_t', 'pPlot', 'pPlot_mean',
-                         'pPlot_var', 'state.prev'
+                         'pPlot_var', 'state.prev', "CARBON_RATIO_LIVE", "DRYBIO_STEM", "DRYBIO_STEM_BARK", 
+                         "DRYBIO_BRANCH", "DRYBIO_STUMP_BARK", "DRYBIO_BOLE_BARK", "DRYBIO_SAWLOG", 
+                         "DRYBIO_SAWLOG_BARK", "CARBON", "nPlots_AREA_DEN", "nPlots_AREA_NUM", "x.vars", "state.beg"
 
 ))

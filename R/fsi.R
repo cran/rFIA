@@ -222,10 +222,10 @@ fsiStarter <- function(x,
 
   ### Only joining tables necessary to produce plot level estimates, adjusted for non-response
   db$PLOT <- select(db$PLOT, c('PLT_CN', pltID, 'REMPER', 'DESIGNCD', 'STATECD', 'MACRO_BREAKPOINT_DIA', 'INVYR',
-                               'MEASYEAR', 'MEASMON', 'MEASDAY', 'PLOT_STATUS_CD', PREV_PLT_CN, grpP, 'sp'))
-  db$COND <- select(db$COND, c('PLT_CN', 'CONDPROP_UNADJ', 'PROP_BASIS', 'COND_STATUS_CD', 'CONDID', grpC, 'aD', 'landD',
+                               'MEASYEAR', 'MEASMON', 'MEASDAY', 'PLOT_STATUS_CD', PREV_PLT_CN, all_of(grpP), 'sp'))
+  db$COND <- select(db$COND, c('PLT_CN', 'CONDPROP_UNADJ', 'PROP_BASIS', 'COND_STATUS_CD', 'CONDID', all_of(grpC), 'aD', 'landD',
                                DSTRBCD1, DSTRBCD2, DSTRBCD3, TRTCD1, TRTCD2, TRTCD3))
-  db$TREE <- select(db$TREE, c('PLT_CN', 'TRE_CN', 'CONDID', 'DIA', 'TPA_UNADJ', 'BAA', 'SUBP', 'TREE', grpT, 'tD', 'typeD',
+  db$TREE <- select(db$TREE, c('PLT_CN', 'TRE_CN', 'CONDID', 'DIA', 'TPA_UNADJ', 'BAA', 'SUBP', 'TREE', all_of(grpT), 'tD', 'typeD',
                                PREVCOND, PREV_TRE_CN, STATUSCD, SPCD))
 
 
@@ -296,22 +296,21 @@ fsi <- function(db,
                    nCores = 1) {
 
   ## Need rjags and coda installed if we're going to model size-density relationships
-  pkgs <- row.names(installed.packages())
-  if (!is.null(betas) & !c('R2jags' %in% pkgs) & !c('coda' %in% pkgs)) {
+  if (!is.null(betas) & is.null(find.package('R2jags')) & is.null(find.package('coda'))) {
     stop('Packages "R2jags" and "coda" required to model maximum size-density curves. Please install with install.packages(c("R2jags", "coda")) and try again.
 
 If not already installed, you can install JAGS from SourceForge:
          Windows: https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Windows/
          Mac: https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Mac%20OS%20X/
          Linux: http://mcmc-jags.sourceforge.net/')
-  } else if (!is.null(betas) & !c('R2jags' %in% pkgs)) {
+  } else if (!is.null(betas) & is.null(find.package('R2jags'))) {
     stop('Package "R2jags" required to model maximum size-density curves. Please install with install.packages("R2jags") and try again.
 
 If not already installed, you can install JAGS from SourceForge:
          Windows: https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Windows/
          Mac: https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Mac%20OS%20X/
          Linux: http://mcmc-jags.sourceforge.net/')
-  } else if (!is.null(betas) &  !c('coda' %in% pkgs)) {
+  } else if (!is.null(betas) &  is.null(find.package('coda'))) {
     stop('Package "coda" required to model maximum size-density curves. Please install with install.packages("coda") and try again.')
   }
 
@@ -431,7 +430,7 @@ If not already installed, you can install JAGS from SourceForge:
     ni <- 1000
     nc <- 3
 
-    cat('Modeling maximum size-density curve(s)...\n')
+    message('Modeling maximum size-density curve(s)...')
 
     # Start Gibbs sampling
     jags_mod_start <- R2jags::jags(data,
@@ -762,7 +761,7 @@ If not already installed, you can install JAGS from SourceForge:
     ## different reporting schedules, i.e., if 2016 is most recent in MI and 2017 is
     ## most recent in WI, combine them and label as 2017
     if (mr) {
-      tEst <- combineMR(tEst, grpBy)
+      tEst <- combineMR(tEst)
     }
 
 

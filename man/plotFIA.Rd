@@ -16,7 +16,7 @@ plotFIA(data, y = NULL, grp = NULL, x = NULL, animate = FALSE, facet = FALSE,
            }
 
 \arguments{
-  \item{data}{dataframe, \code{sf} object, or \code{FIA.Database} object; FIA summary produced from other \code{rFIA} functions (e.g. \code{\link{tpa}}, \code{\link{biomass}}, etc.). Also accepts \code{FIA.Database}, will return map of plot locations.}
+  \item{data}{dataframe, \code{sf} object, or \code{FIA.Database} object; FIA summary produced from other \code{rFIA} functions (e.g. \code{tpa}, \code{biomass}, etc.). Also accepts \code{FIA.Database}, will return map of plot locations.}
 
   \item{y}{variable contained in \code{data} which will be used as y-axis or to fill polygons (spatial). NOT quoted.}
 
@@ -28,7 +28,7 @@ plotFIA(data, y = NULL, grp = NULL, x = NULL, animate = FALSE, facet = FALSE,
 
   \item{facet}{logical; if TRUE, produces temporally grouped plots (stationary).}
 
-    \item{se}{logical; if TRUE, plots error bars along with estimates. All error bars represent 68\% confidence.}
+    \item{se}{logical; if TRUE, plots error bars along with estimates. All error bars represent 95\% confidence.}
 
   \item{n.max}{numeric; maximum number of groups to plot. If positive, will plot the top \code{n} groups with respect to \code{y}, and if negative, will plot the bottom \code{n}. Not meaningful for spatial summaries.}
 
@@ -94,12 +94,16 @@ Specify \code{savePath} and \code{fileName} to save plots (animations saved as .
 Hunter Stanke and Andrew Finley
 }
 
+\value{
+A \code{ggplot} object containing the resulting plot. 
+}
+
 \examples{
 ## Load data from the rFIA package
 data(fiaRI)
 data(countiesRI)
 
-\dontrun{\donttest{
+\donttest{
 
 ################### SPATIAL PLOTTING #############################
 ## Compute abundance estimates for live stems in Rhode Island
@@ -108,9 +112,13 @@ data(countiesRI)
 tpaRI <- tpa(fiaRI, polys = countiesRI, returnSpatial = TRUE)
 
 ## Produce animated plot
-plotFIA(tpaRI, y = TPA, animate = TRUE, legend.title = 'Abundance (TPA)')
+if(interactive()) {
+  plotFIA(tpaRI, y = TPA, animate = TRUE, legend.title = 'Abundance (TPA)')
+}
 ## With a square root transform
-plotFIA(tpaRI, y = TPA, animate = TRUE, legend.title = 'Abundance (TPA)', transform = 'sqrt')
+if(interactive()) {
+  plotFIA(tpaRI, y = TPA, animate = TRUE, legend.title = 'Abundance (TPA)', transform = 'sqrt')
+}
 
 ## Same as above, but for static plots (most recent subset from RI)
 tpaMR <- tpa(clipFIA(fiaRI), polys = countiesRI, returnSpatial = TRUE)
@@ -135,5 +143,5 @@ plotFIA(tpaRI_sc, y = BAA, grp = COMMON_NAME, x = sizeClass, n.max = 4)# Only th
 
 }
 }
-}
+
 
