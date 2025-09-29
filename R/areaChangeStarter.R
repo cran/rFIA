@@ -10,7 +10,7 @@ areaChangeStarter <- function(x, db, grpBy_quo = NULL, polys = NULL,
   reqTables <- c('PLOT', 'TREE', 'COND', 'SUBP_COND_CHNG_MTRX',
                  'POP_PLOT_STRATUM_ASSGN',
                  'POP_ESTN_UNIT', 'POP_EVAL',
-                 'POP_STRATUM', 'POP_EVAL_TYP', 'POP_EVAL_GRP')
+                 'POP_STRATUM', 'POP_EVAL_TYP', 'POP_EVAL_GRP', 'PLOTGEOM')
 
   # If remote, read in state by state. Otherwise, drop all unnecessary tables.
   db <- readRemoteHelper(x, db, remote, reqTables, nCores)
@@ -48,6 +48,15 @@ areaChangeStarter <- function(x, db, grpBy_quo = NULL, polys = NULL,
   }
 
   # Other basic variable prep ---------------------------------------------
+  # Join PLOT with PLOTGEOM to allow plot-level geographic attributes to be used
+  # in grpBy statements
+  # First need to get rid of other columns in PLOT in PLOTGEOM. 
+  db$PLOTGEOM <- db$PLOTGEOM %>%
+    dplyr::select(-STATECD, -INVYR, -UNITCD, -COUNTYCD, -PLOT, -LAT, -LON, 
+                  -dplyr::starts_with('CREATED'), -dplyr::starts_with('MODIFIED'))
+  db$PLOT <- db$PLOT %>%
+    dplyr::left_join(db$PLOTGEOM, by = 'CN')
+
   # Get a plot CN and a new pltID that gives a unique ID to each plot
   # PLT_CN is UNITCD, STATECD, COUNTYCD, PLOT, and INVYR
   db$PLOT <- db$PLOT %>%
@@ -162,7 +171,7 @@ areaChangeStarter <- function(x, db, grpBy_quo = NULL, polys = NULL,
     # diversion and reversion.
     dplyr::filter(sp == 1) %>%
     # Drop visits not used in our eval of interest
-    dplyr::filter(PLT_CN %in% c(keepThese$PLT_CN, keepThese$PREV_PLT_CN))
+    dplyr::filter(PLT_CN %in% !!c(keepThese$PLT_CN, keepThese$PREV_PLT_CN))
 
   # COND ------------------------------
   db$COND <- db$COND %>%
@@ -216,7 +225,6 @@ areaChangeStarter <- function(x, db, grpBy_quo = NULL, polys = NULL,
 
   # Full condition list ---------------------------------------------------
   data <- db$PLOT %>%
-    dtplyr::lazy_dt() %>%
     dplyr::filter(PLT_CN %in% keepThese$PLT_CN) %>%
     dplyr::left_join(db$COND, by = c('PLT_CN')) %>%
     dplyr::left_join(db$TREE, by = c('PLT_CN', 'CONDID')) %>%
