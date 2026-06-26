@@ -220,8 +220,8 @@ If not already installed, you can install JAGS from SourceForge:
     } else { # Tidy up LMs
       # Make it tidy
       betas <- chains %>%
-        dplyr::bind_rows()
-      tidyr::pivot_longer(cols = everything(), names_to = 'var', values_to = 'estimate') %>%
+        dplyr::bind_rows() %>%
+        tidyr::pivot_longer(cols = everything(), names_to = 'var', values_to = 'estimate') %>%
         dplyr::filter(stringr::str_detect(var, 'deviance', negate = TRUE)) %>%
         dplyr::mutate(term = dplyr::case_when(stringr::str_detect(var, 'alpha') ~ 'int',
                                               TRUE ~ 'rate')) %>%
@@ -452,7 +452,7 @@ If not already installed, you can install JAGS from SourceForge:
         dplyr::left_join(wgts, by = joinCols) %>%
         dplyr::mutate(dplyr::across(ctEst:rempEst, ~(.*wgt))) %>%
         dplyr::mutate(dplyr::across(ctVar:cvEst_remp, ~(.*(wgt^2)))) %>%
-        dplyr::group_by(ESTN_UNIT_CN, .dots = grpBy) %>%
+        dplyr::group_by(ESTN_UNIT_CN, across(all_of(grpBy))) %>%
         dplyr::summarize(across(ctEst:plotIn_t, sum, na.rm = TRUE))
       
       # If using an ANNUAL estimator --------------------------------------------
@@ -474,12 +474,12 @@ If not already installed, you can install JAGS from SourceForge:
     ## Totals and ratios -------------------------------------------------------
     # Tree
     tTotal <- tEst %>%
-      dplyr::group_by(.dots = grpBy) %>%
+      dplyr::group_by(across(all_of(grpBy))) %>%
       dplyr::summarize_all(sum, na.rm = TRUE)
     
     suppressWarnings({
       tOut <- tTotal %>%
-        dplyr::group_by(.dots = grpBy) %>%
+        dplyr::group_by(across(all_of(grpBy))) %>%
         dplyr::summarize_all(sum,na.rm = TRUE) %>%
         dplyr::mutate(TPA_RATE = ctEst / ptEst,
                       BA_RATE = cbEst / pbEst,
@@ -513,9 +513,8 @@ If not already installed, you can install JAGS from SourceForge:
                       REMPER_VAR = rempVar,
                       
                       nPlots = plotIn_t,
-                      N = P2PNTCNT_EU,
-                      FSI_INT = qt(.975, df=N-1) * (sqrt(siVar)/sqrt(N)),
-                      PERC_FSI_INT = qt(.975, df=N-1) * (sqrt(psiVar)/sqrt(N))) %>%
+                      FSI_INT = qt(.975, df=nPlots-1) * sqrt(siVar),
+                      PERC_FSI_INT = qt(.975, df=nPlots-1) * sqrt(psiVar)) %>%
         dplyr::mutate(FSI_STATUS = dplyr::case_when(
           FSI < 0 & FSI + FSI_INT < 0 ~ 'Decline',
           FSI < 0 & FSI + FSI_INT > 0 ~ 'Stable',
@@ -532,7 +531,7 @@ If not already installed, you can install JAGS from SourceForge:
                       PREV_RD, CURR_RD, TPA_RATE, BA_RATE,
                       FSI_VAR, PERC_FSI_VAR, PREV_RD_VAR, CURR_RD_VAR,
                       TPA_RATE_VAR, BA_RATE_VAR,
-                      nPlots, N)
+                      nPlots)
       
     } else {
       tOut <- tOut %>%
@@ -541,7 +540,7 @@ If not already installed, you can install JAGS from SourceForge:
                       PREV_RD, CURR_RD, TPA_RATE, BA_RATE,
                       FSI_VAR, PERC_FSI_VAR, PREV_RD_VAR, CURR_RD_VAR,
                       TPA_RATE_VAR, BA_RATE_VAR,
-                      nPlots, N)
+                      nPlots)
     }
     
     # Snag the names
