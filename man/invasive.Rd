@@ -49,6 +49,7 @@ When \code{byPlot = FALSE} (i.e., population estimates are returned), the "YEAR"
 
 Stratified random sampling techniques are most often employed to compute estimates in recent inventories, although double sampling and simple random sampling may be employed for early inventories. Estimates are adjusted for non-response bias by assuming attributes of non-response plot locations to be equal to the mean of other plots included within thier respective stratum or population.
 
+\strong{NOTE}: when using \code{invasive()} to estimate invasive species cover in a state with a restricted sample for which invasive species are recorded (i.e., the Northern region), the TOTAL provided when \code{totals = TRUE} will not be estimated totals across the entire domain of interest (e.g., a state) and rather represent the totals within forest area that was sampled by the invasive/P2veg protocol. Thus, for the Northern region, TOTAL estimates should only be used in extreme caution. For regions where all phase 2 plots are included for measuring invasives (i.e., Southern region, Rocky Mountain Region), the total estimates can be reliably used as estimates of invasive species area and total forest area across the region of interest.  
 
 \strong{Working with "Big Data"}
 
@@ -85,7 +86,7 @@ rFIA website: \url{https://doserlab.com/files/rfia/}
 
 FIA Database User Guide: \url{https://research.fs.usda.gov/understory/forest-inventory-and-analysis-database-user-guide-nfi}
 
-Bechtold, W.A.; Patterson, P.L., eds. 2005. The Enhanced Forest Inventory and Analysis Program - National Sampling Design and Estimation Procedures. Gen. Tech. Rep. SRS - 80. Asheville, NC: U.S. Department of Agriculture, Forest Service, Southern Research Station. 85 p. \url{https://www.srs.fs.usda.gov/pubs/gtr/gtr_srs080/gtr_srs080.pdf}
+Bechtold, W.A.; Patterson, P.L., eds. 2005. The Enhanced Forest Inventory and Analysis Program - National Sampling Design and Estimation Procedures. Gen. Tech. Rep. SRS - 80. Asheville, NC: U.S. Department of Agriculture, Forest Service, Southern Research Station. 85 p. \url{https://research.fs.usda.gov/download/treesearch/20371.pdf}
 
 Stanke, H., Finley, A. O., Weed, A. S., Walters, B. F., & Domke, G. M. (2020). rFIA: An R package for estimation of forest attributes with the US Forest Inventory and Analysis database. Environmental Modelling & Software, 127, 104664.
 }

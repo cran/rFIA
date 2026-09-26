@@ -257,6 +257,42 @@ grpByToChar <- function(db, grpBy_quo){
 
 }
 
+# Warn when grpBy references a column that denotes a physically distinct
+# sub-area of the plot, rather than an attribute of trees/conditions within
+# the same shared area. Currently just SUBP: unlike species, size class,
+# CONDID, etc. (which all partition trees/area within the SAME sampled
+# area, so leaving the area denominator alone is correct), SUBP's four
+# values each correspond to a genuinely different physical sub-area of the
+# plot. Grouping by SUBP still produces a mathematically valid partition of
+# the plot-level per-acre estimate (each subplot's share sums back to the
+# ungrouped total exactly), but it is NOT a re-weighted, subplot-local
+# density -- the area denominator is not currently re-weighted to match,
+# since that would require subplot-level area proportions (SUBP_COND) that
+# none of the estimators currently use. See issue #31.
+#
+# Uses all.vars() on the quosure's unevaluated expression (not the resolved
+# column names from grpByToChar()) so this can run once per top-level
+# dispatcher call, before the lapply over states/iter -- grpByToChar() itself
+# runs once per state, and warning there would fire once per state for a
+# Remote.FIA.Database. This means a SUBP selected via a tidyselect helper
+# (e.g. starts_with('SUB')) won't be caught; that's an acceptable gap for a
+# warning, not a hard gate.
+warnRiskyGrpBy <- function(grpBy_quo) {
+  if ('SUBP' %in% all.vars(rlang::quo_get_expr(grpBy_quo))) {
+    warning(paste(
+      'grpBy includes SUBP: each subplot\'s value is its share of the',
+      'plot-level per-acre estimate, not a re-weighted, subplot-local',
+      'density -- subplot values will not equal what you would get by',
+      'treating each subplot as its own independently sampled acre. This is',
+      'because SUBP denotes a physically distinct sub-area of the plot,',
+      'unlike other grouping variables (species, size class, etc.), and the',
+      'area denominator is not currently re-weighted to match. See Details',
+      'in this function\'s help page for more.'
+    ), call. = FALSE)
+  }
+  invisible(NULL)
+}
+
 # Drop all inventories that are specific to east or west tx. Only retain evals
 # that span the entire state
 handleTX <- function(db){
@@ -314,11 +350,16 @@ landTypeDomain <- function(landType, COND_STATUS_CD, SITECLCD, RESERVCD) {
 }
 
 # Tree type domain indicator
-treeTypeDomain <- function(treeType, STATUSCD, DIA, TREECLCD) {
+treeTypeDomain <- function(treeType, STATUSCD, DIA, TREECLCD, STANDING_DEAD_CD) {
   if (tolower(treeType) == 'live'){
     typeD <- data.table::fifelse(STATUSCD == 1, 1, 0)
   } else if (tolower(treeType) == 'dead'){
-    typeD <- data.table::fifelse(STATUSCD == 2, 1, 0)
+    # Matches EVALIDator's "standing dead" definition: a dead tree only
+    # qualifies if it also meets the standing-dead tally-tree criteria
+    # (STANDING_DEAD_CD == 1 -- unbroken bole length >= 4.5 ft, leaning less
+    # than 45 degrees from vertical). Without this, treeType = 'dead'
+    # included down/broken dead trees that EVALIDator excludes.
+    typeD <- data.table::fifelse(STATUSCD == 2 & STANDING_DEAD_CD == 1, 1, 0)
   } else if (tolower(treeType) == 'gs'){
     typeD <- data.table::fifelse(STATUSCD == 1 & DIA >= 5 & TREECLCD == 2, 1, 0)
   } else if (tolower(treeType) == 'all'){
@@ -346,7 +387,7 @@ typeDomain_grow <- function(db, treeType, landType, type, stateVar = NULL) {
                                                COMPONENT = SUBP_COMPONENT_AL_FOREST)
 
       } else if (tolower(treeType) == 'gs'){
-        db$TREE$typeD <- 1 
+        db$TREE$typeD <- 1
         db$TREE_GRM_COMPONENT <- dplyr::rename(db$TREE_GRM_COMPONENT,
                                                TPAMORT_UNADJ = SUBP_TPAMORT_UNADJ_GS_FOREST,
                                                TPAREMV_UNADJ = SUBP_TPAREMV_UNADJ_GS_FOREST,
@@ -354,6 +395,15 @@ typeDomain_grow <- function(db, treeType, landType, type, stateVar = NULL) {
                                                SUBPTYP_GRM = SUBP_SUBPTYP_GRM_GS_FOREST,
                                                COMPONENT = SUBP_COMPONENT_GS_FOREST)
       }
+      # Sawtimber-specific growth-accounting component, used only for SAWVOL_GROW/
+      # SAWVOL_GROW_AC. EVALIDator's sawlog-volume growth attributes are defined for
+      # sawtimber trees specifically (a size-based subset of growing-stock), not the
+      # treeType selected above, matching growMort()'s existing SL_FOREST/SL_TIMBER
+      # handling for its SAWVOL/SAWVOL_BF state variables.
+      db$TREE_GRM_COMPONENT <- dplyr::rename(db$TREE_GRM_COMPONENT,
+                                             TPAGROW_UNADJ_SAW = SUBP_TPAGROW_UNADJ_SL_FOREST,
+                                             SUBPTYP_GRM_SAW = SUBP_SUBPTYP_GRM_SL_FOREST,
+                                             COMPONENT_SAW = SUBP_COMPONENT_SL_FOREST)
     } else if (tolower(landType) == 'timber'){
       db$COND$landD <- ifelse(db$COND$COND_STATUS_CD == 1 & db$COND$SITECLCD %in% c(1, 2, 3, 4, 5, 6) & db$COND$RESERVCD == 0, 1, 0)
       # Tree Type domain indicator
@@ -377,6 +427,12 @@ typeDomain_grow <- function(db, treeType, landType, type, stateVar = NULL) {
                                                SUBPTYP_GRM = SUBP_SUBPTYP_GRM_GS_TIMBER,
                                                COMPONENT = SUBP_COMPONENT_GS_TIMBER)
       }
+      # Sawtimber-specific growth-accounting component -- see the matching comment
+      # in the 'forest' branch above.
+      db$TREE_GRM_COMPONENT <- dplyr::rename(db$TREE_GRM_COMPONENT,
+                                             TPAGROW_UNADJ_SAW = SUBP_TPAGROW_UNADJ_SL_TIMBER,
+                                             SUBPTYP_GRM_SAW = SUBP_SUBPTYP_GRM_SL_TIMBER,
+                                             COMPONENT_SAW = SUBP_COMPONENT_SL_TIMBER)
     }
 
   } else if (type == 'gm') {
@@ -501,14 +557,15 @@ udAreaDomain <- function(db, areaDomain) {
 
   # Only evaluate if areaDomain isn't null
   if (!rlang::quo_is_null(areaDomain)) {
-    # We'll join up PLOT and COND, and evaluate in the context of the joined table
-    plt <- db$PLOT %>% 
-      dplyr::filter(PLOT_STATUS_CD == 1)
-    cnd <- db$COND %>% 
-      dplyr::filter(COND_STATUS_CD == 1)
+    # We'll join up PLOT and COND, and evaluate in the context of the joined table.
+    # Note we don't restrict to forest land here (areaDomain is also used by
+    # area()/areaChange() with non-forest landType values), and doing so would
+    # give conditions outside the restriction an NA (not 0) domain indicator,
+    # silently dropping them downstream instead of just returning 0 area.
+    plt <- db$PLOT
+    cnd <- db$COND
 
-
-    pcEval <- dplyr::left_join(plt, 
+    pcEval <- dplyr::left_join(plt,
       dplyr::select(cnd, -c('STATECD', 'UNITCD', 'COUNTYCD', 'INVYR', 'PLOT')), by = 'PLT_CN')
     pcEval$aD <- rlang::eval_tidy(areaDomain, pcEval) # LOGICAL, THIS IS THE DOMAIN INDICATOR
     if(!is.null(pcEval$aD)) pcEval$aD[is.na(pcEval$aD)] <- 0 # Make NAs 0s. Causes bugs otherwise
@@ -674,7 +731,15 @@ mergeSmallStrata <- function(db, pops) {
   # If any are too small, i.e., only one plot --> do some merging
   if (sum(stratYr$wrong, na.rm = TRUE) > 0){
 
-    for (i in stratYr$stratID[stratYr$wrong == 1]) {
+    # A stratID with INVYR = NA represents plots that are stratified into
+    # the population but excluded from this function's actual estimation
+    # (e.g. vegStruct()/invasive()'s P2-ancillary-protocol pre-filter of
+    # db$PLOT drops these plots' INVYR when handlePops() left_joins onto
+    # the now-narrower db$PLOT) -- not a real per-year sample needing
+    # small-strata pooling. Excluded from needing a merge partner (here)
+    # and from being selected as one (both neighbor searches below), since
+    # neither role makes sense for a row with no real INVYR of its own.
+    for (i in stratYr$stratID[stratYr$wrong == 1 & !is.na(stratYr$INVYR)]) {
 
       # Subset the row
       dat <- filter(stratYr, stratID == i)
@@ -687,7 +752,8 @@ mergeSmallStrata <- function(db, pops) {
         neighbors <- stratYr %>%
           filter(ESTN_UNIT_CN == dat$ESTN_UNIT_CN) %>%
           filter(INVYR == dat$INVYR) %>%
-          filter(stratID != i)
+          filter(stratID != i) %>%
+          filter(!is.na(INVYR))
 
         if (nrow(neighbors) < 1) {
           warnMe <- c(warnMe, TRUE)
@@ -724,7 +790,8 @@ mergeSmallStrata <- function(db, pops) {
         # No other strata measured in the same year, so merge years instead
         neighbors <- stratYr %>%
           filter(STRATUM_CN == dat$STRATUM_CN) %>%
-          filter(stratID != i)
+          filter(stratID != i) %>%
+          filter(!is.na(INVYR))
 
         if (nrow(neighbors) > 0) {
           warnMe <- c(warnMe, FALSE)
@@ -803,7 +870,6 @@ mergeSmallStrata <- function(db, pops) {
 # For annual estimator, we use the most recent stratification for all years.
 # Otherwise we won't be able to compute the covariance between panels, because
 # stratum boundaries and assignments differ from year to year.
-# TODO:
 annualStrataHelper <- function(db, pops) {
 
 
@@ -1027,7 +1093,6 @@ annualStrataHelper <- function(db, pops) {
 }
 
 
-# TODO: 
 ## Moving average weights
 maWeights <- function(pops, method, lambda){
 
@@ -1055,6 +1120,15 @@ maWeights <- function(pops, method, lambda){
 
     #### ----- EXPONENTIAL MOVING AVERAGE
   } else if (stringr::str_to_upper(method) == 'EMA'){
+    ## lambda is documented as numeric (0,1) (see man/tpa.Rd and friends),
+    ## but nothing enforced that range: at the exact boundaries (0 or 1)
+    ## the weighting formula below is 0/0 (NaN) for most or all panels, and
+    ## outside the range it produces a negative weight or an inverted
+    ## recency ordering rather than a sensible weighted average.
+    if (anyNA(lambda) || any(lambda <= 0) || any(lambda >= 1)) {
+      stop("`lambda` must be numeric and strictly between 0 and 1 (received: ",
+           paste(lambda, collapse = ', '), ").", call. = FALSE)
+    }
     wgts <- pops %>%
       dplyr::distinct(YEAR, STATECD, INVYR, .keep_all = TRUE) %>%
       dplyr::arrange(YEAR, STATECD, INVYR) %>%
@@ -1105,49 +1179,39 @@ maWeights <- function(pops, method, lambda){
 # Combine most-recent population estimates across states with potentially
 # different reporting schedules, e.g., if 2016 is most recent in MI and 2017 is
 # most recent in WI, combine them and label as 2017
-combineMR <- function(x){
+combineMR <- function(x, method){
+  # A domain that matches no plots produces a 0-row x. max(YEAR, na.rm = TRUE)
+  # on an empty vector has no sensible answer, so skip the relabeling rather
+  # than let it emit a "no non-missing arguments to max" warning.
+  if (nrow(x) == 0) return(x)
+
+  # method = 'ANNUAL' legitimately returns multiple distinct-YEAR rows per
+  # state (one per sampled panel-year, via filterAnnual()). Relabeling them
+  # all to a single YEAR here would silently pool them together in the
+  # downstream group_by(YEAR, ...) %>% summarize(sum(...)) step. combineMR()
+  # exists to reconcile *different states'* differing "most recent" YEARs
+  # under TI/SMA/LMA/EMA (which already collapse to one row per state before
+  # reaching here), not to touch ANNUAL's genuinely multi-row output.
+  if (stringr::str_to_upper(method) == 'ANNUAL') return(x)
+
   out <- x %>%
     dplyr::ungroup() %>%
     dplyr::mutate(YEAR = max(YEAR, na.rm = TRUE))
   return(out)
 }
 
-# TODO: should just be able to delete this. 
-# Make implicit NA explicit for spatial summaries
-prettyNamesSF <- function (tOut, polys, byPlot, grpBy, grpByOrig, tNames, returnSpatial) {
-
-  # Return a spatial object
-  if (!is.null(polys) & byPlot == FALSE) {
-    ## NO IMPLICIT NA
-    nospGrp <- unique(grpBy[grpBy %in% c('SPCD', 'SYMBOL', 'COMMON_NAME', 'SCIENTIFIC_NAME') == FALSE])
-    nospSym <- dplyr::syms(nospGrp)
-    tOut <- tidyr::complete(tOut, !!!nospSym)
-    # If species, we don't want unique combos of variables related to same species
-    # but we do want NAs in polys where species are present
-    if (length(nospGrp) < length(grpBy)){
-      spGrp <- unique(grpBy[grpBy %in% c('SPCD', 'SYMBOL', 'COMMON_NAME', 'SCIENTIFIC_NAME')])
-      spSym <- dplyr::syms(spGrp)
-      tOut <- tidyr::complete(tOut, tidyr::nesting(!!!nospSym))
-    }
-
-    suppressMessages({suppressWarnings({
-      tOut <- dplyr::left_join(tOut, polys) %>%
-        dplyr::select(c('YEAR', grpByOrig, tNames, names(polys))) %>%
-        dplyr::filter(!is.na(polyID))})})
-
-    # Makes it horrible to work with as a dataframe
-    if (returnSpatial == FALSE) tOut <- dplyr::select(tOut, -c(geometry))
-  } else if (!is.null(polys) & byPlot){
-    polys <- as.data.frame(polys)
-    tOut <- dplyr::left_join(tOut, dplyr::select(polys, -c(geometry)), by = 'polyID')
-  }
-
-  return(tOut)
-}
-
-# TODO: need to update this, its not actually filtering things properly. It doesn't 
-#       result in selecting a bad annual panel, but it may not get the most optimal one. 
-# Choose annual panels to return
+# A single panel (INVYR) is often a constituent of more than one FIA
+# evaluation's multi-panel window -- e.g. RI's 2013 evaluation covers panels
+# 2009-2013, and its 2014 evaluation covers panels 2009-2014, so panel 2009
+# is "hosted" by both. For each panel, choose the single best hosting eval
+# to draw its standalone estimate from: the eval whose own nominal year
+# equals that panel's INVYR (a "self-hosting" eval, i.e. INVYR == YEAR) if
+# one exists, otherwise whichever hosting eval gives it the most plots. The
+# output is labeled with the panel's own INVYR (not the hosting eval's
+# year), since `method = 'ANNUAL'` reports one row per actual sampled
+# panel-year, not one row per evaluation. Estimation-unit-level estimates
+# are first aggregated up to the state level, since hosting evals compete
+# on a per-state (not per-estimation-unit) basis.
 filterAnnual <- function(x, grpBy, pltsVar, ESTN_UNIT) {
 
   # Have to handle statecd carefully in grp by
@@ -1158,27 +1222,47 @@ filterAnnual <- function(x, grpBy, pltsVar, ESTN_UNIT) {
       dplyr::select(-c(STATECD))
   }
   pltquo <- rlang::enquo(pltsVar)
+  otherGrp <- grpBy[!c(grpBy %in% 'STATECD')]
+  ## YEAR (the hosting eval's own nominal year) must NOT be part of the
+  ## comparison group below -- the whole point is to compare *across*
+  ## different hosting evals (different YEAR values) for the *same* panel.
+  panelGrp <- otherGrp[otherGrp != 'YEAR']
+
   x <- x %>%
     dplyr::left_join(dplyr::distinct(dplyr::select(ESTN_UNIT, CN, STATECD)), by = c('ESTN_UNIT_CN' = 'CN')) %>%
     dplyr::mutate(nplts = !!pltquo) %>%
-    # Grouped by STATECD, INVYR, and YEAR 
-    dplyr::group_by(STATECD, INVYR, across(all_of(grpBy[!c(grpBy %in% 'STATECD')]))) %>%
-    dplyr::summarize(dplyr::across(dplyr::everything(), \(x) sum(x, na.rm = TRUE))) %>% 
-    ## Keep these
-    dplyr::group_by(STATECD, INVYR, across(all_of(grpBy[!c(grpBy %in% 'STATECD')]))) %>%
-    dplyr::mutate(keep = ifelse(INVYR %in% YEAR,
-                                ifelse(YEAR == INVYR, 1, 0), ## When TRUE
-                                ifelse(nplts == max(nplts, na.rm = TRUE), 1, 0))) %>% ## When INVYR not in YEAR, keep estimates from the inventory where panel has the most plots
-    dplyr::ungroup() %>%
+    # Aggregate estimation-unit-level estimates up to the state level for
+    # each (STATECD, INVYR, hosting eval YEAR, ...) candidate.
+    dplyr::group_by(STATECD, INVYR, across(all_of(otherGrp))) %>%
+    dplyr::summarize(dplyr::across(dplyr::everything(), \(x) sum(x, na.rm = TRUE)), .groups = 'drop') %>%
+    # For each panel (STATECD, INVYR, ...), compare across its candidate
+    # hosting evals -- grouping by (STATECD, INVYR, YEAR, ...) here (i.e.
+    # including YEAR) would put each hosting eval in its own singleton
+    # group and make this comparison a no-op against itself.
+    dplyr::group_by(STATECD, INVYR, across(all_of(panelGrp))) %>%
+    ## `ifelse(any(INVYR == YEAR), ...)` would collapse the whole group's
+    ## `keep` column to length 1, since ifelse()'s output length follows
+    ## its (here scalar) *condition*, not its (here per-row) yes/no
+    ## branches -- so this is written as a directly vectorized boolean
+    ## expression instead: keep the self-hosting eval (INVYR == YEAR) when
+    ## one exists, otherwise the hosting eval(s) with the most plots. Uses
+    ## `%in%` rather than `==`/`any(...)` for the "does a self-hosting eval
+    ## exist" check specifically because it's NA-safe: a small number of
+    ## incomplete estimation-unit rows with YEAR = NA can appear in `x`
+    ## (an unrelated upstream join-completeness artifact), and `INVYR ==
+    ## NA` is NA rather than FALSE, which would otherwise propagate through
+    ## `any()` and silently null out `keep` for the entire group.
+    dplyr::mutate(keep = as.numeric(
+      (INVYR == YEAR) | (!(INVYR %in% YEAR) & nplts == max(nplts, na.rm = TRUE))
+    )) %>%
     dplyr::filter(keep == 1) %>%
-    # If there are multiple reporting years where a panel has the same number of plots
-    # then the estimate will be way too big, we fix this by taking the first row from each output group
-    # If the above worked it will have no effect. If the above failed, it will save our ass.
+    # Ties in `nplts` among multiple hosting evals for the same panel are
+    # broken by taking the first row per group (rare in practice).
+    dplyr::slice_head(n = 1) %>%
+    dplyr::ungroup() %>%
     dplyr::mutate(YEAR = INVYR) %>%
-    dplyr::group_by(STATECD, across(all_of(grpBy[!c(grpBy %in% 'STATECD')]))) %>%
-    dplyr::summarize(dplyr::across(.cols = dplyr::everything(), dplyr::first)) %>%
-    dplyr::ungroup()
-  
+    dplyr::select(-keep)
+
   return(x)
 }
 
@@ -1197,53 +1281,7 @@ skewness <- function(x, na.rm = TRUE){
   return(skew)
 }
 
-# TODO: 
-projectPnts <- function(x, y, slope = NULL, yint = NULL){
-  if (is.null(slope)){
-    P = data.frame(xOrig = x, yOrig = y)
-    P$x <- (P$yOrig+P$xOrig) / 2
-    P$y <- P$x
-  } else {
-    P = data.frame(x, y)
-    P$m <- slope
-    P$n <- yint
-    ## Perp Points
-    P$x1 = P$x + -slope
-    P$y1 = P$y + 1
-    ## Perp Line
-    P$m1 = (P$y1-P$y)/(P$x1-P$x)
-    P$n1 = P$y - P$m1*P$x
-    ## Line intersection
-    P$x=(P$n1-P$n)/(P$m-P$m1)
-    P$y=P$m*P$x+P$n
-  }
-  return(P)
-}
 
-# TODO: 
-projectPoints <- function(x, y, slope = 1, yint = 0, returnPoint = TRUE){
-  ## Solve for 1:1 line by default
-
-  ## So where does y = mx and y = -1/m * x + b converge
-  perp_slope <-  - 1 / slope
-  ## Solve for c given x and y
-  perp_int <- -perp_slope*x + y
-
-  ## Set equations equal to each other on y
-  ## -1/m*x + b = mx
-  xproj <- (perp_int - yint) / (slope + -perp_slope)
-  yproj <- slope * xproj + yint
-
-  if (returnPoint){
-    out <- data.frame(x = xproj, y = yproj)
-  } else {
-    out <- sqrt((xproj^2) + (yproj^2))
-    out <- dplyr::if_else(xproj < 0, -out, out)
-  }
-  return(out)
-}
-
-# TODO: 
 #### SHANNON'S EVENESS INDEX (H)
 #
 # speciesObs: vector of observations (species or unique ID)
@@ -1359,7 +1397,6 @@ structHelper <- function(dia, crownClass){
 }
 
 
-# TODO:
 # Prop basis helper
 adjHelper <- function(DIA, MACRO_BREAKPOINT_DIA, ADJ_FACTOR_MICR, ADJ_FACTOR_SUBP, ADJ_FACTOR_MACR){
   # IF it doesnt exist make it massive
@@ -1375,7 +1412,6 @@ adjHelper <- function(DIA, MACRO_BREAKPOINT_DIA, ADJ_FACTOR_MICR, ADJ_FACTOR_SUB
 
 }
 
-# TODO: 
 # GRM adjustment helper
 grmAdj <- function(subtyp, adjMicr, adjSubp, adjMacr) {
 
@@ -1392,7 +1428,6 @@ grmAdj <- function(subtyp, adjMicr, adjSubp, adjMacr) {
   return(data$adj)
 }
 
-# TODO: 
 # Helper function to compute variance for estimation units (manages different estimation methods)
 unitVarDT <- function(method, ESTN_METHOD, a, nh, w, v, stratMean, stratMean1 = NULL){
   unitM <- unitMean(ESTN_METHOD, a, nh, w, stratMean)
@@ -1412,7 +1447,6 @@ unitVarDT <- function(method, ESTN_METHOD, a, nh, w, v, stratMean, stratMean1 = 
   }
 }
 
-# TODO: 
 unitVar <- function(method, ESTN_METHOD, a, nh, w, v, stratMean, unitM, stratMean1 = NULL, unitM1 = NULL){
   if(method == 'var'){
     uv = ifelse(dplyr::first(ESTN_METHOD) == 'strat',
@@ -1429,7 +1463,6 @@ unitVar <- function(method, ESTN_METHOD, a, nh, w, v, stratMean, unitM, stratMea
   }
 }
 
-# TODO: 
 unitVarNew <- function(method, ESTN_METHOD, a, nh, n, w, v, stratMean, unitM, stratMean1 = NULL, unitM1 = NULL){
   if(method == 'var'){
     uv = ifelse(dplyr::first(ESTN_METHOD) == 'strat',
@@ -1456,7 +1489,6 @@ rVar <- function(x, y, xVar, yVar, xyCov){
   return(rv)
 }
 
-# TODO: 
 # Helper function to compute variance for estimation units (manages different estimation methods)
 unitMean <- function(ESTN_METHOD, a, nh, w, stratMean){
   um = ifelse(dplyr::first(ESTN_METHOD) == 'strat',
@@ -1482,7 +1514,6 @@ vrAttHelper <- function(attribute, attribute.prev, attribute.mid, attribute.beg,
   return(at)
 }
 
-# TODO: 
 ratioVar <- function(x, y, x.var, y.var, cv) {
   r.var <- (1 / (y^2)) * (x.var + ((x/y)^2 * y.var) - (2 * (x/y) * cv) )
   # Sometimes rounding errors in covariance estimate cause slightly negative
@@ -1492,25 +1523,31 @@ ratioVar <- function(x, y, x.var, y.var, cv) {
   return(r.var)
 }
 
-# TODO: 
 sumToPlot <- function(x,
                       pops,
                       grpBy) {
 
-  ## Convert to syms so we can use in dplyr functions
+  # Convert to syms so we can use in dplyr functions
   grp.syms <- syms(grpBy)
 
-  ## Sum x variable(s) up to plot-level
+  # Sum x variable(s) up to plot-level
   if ('TREE_BASIS' %in% names(x)) {
 
-    ## Allows us to use across in summary functions
+    # Allows us to use across in summary functions
     x.vars <- syms(names(x)[!c(names(x) %in% c('PLT_CN', 'TREE_BASIS',
                                                'CONDID', 'SUBP', 'TREE', 'ONEORTWO',
                                                grpBy))])
 
-    ## Sum up to plot
+    # Sum up to plot
     x <- x %>%
       dtplyr::lazy_dt() %>%
+      # Plots/conditions with no qualifying tree carry a phantom
+      # TREE_BASIS = NA row (e.g., from a treeList=TRUE output, where a
+      # condition is left-joined against its trees). They correctly
+      # contribute 0 downstream, but left unfiltered their PLT_CN would
+      # still be counted in nPlots.x/nPlots.y by sumToEU(), mirroring the
+      # nPlots_AREA/CONDID bug fixed in *Starter.R (see tpa.md).
+      dplyr::filter(!is.na(TREE_BASIS)) %>%
       dplyr::group_by(PLT_CN, TREE_BASIS, !!!grp.syms) %>%
       dplyr::summarize(dplyr::across(.cols = c(!!!x.vars), \(x) sum(x, na.rm = TRUE))) %>% 
       dplyr::ungroup() %>%
@@ -1546,6 +1583,9 @@ sumToPlot <- function(x,
     # Sum up to plot
     x <- x %>%
       dtplyr::lazy_dt() %>%
+      # Mirrors the TREE_BASIS filter above: drop phantom AREA_BASIS = NA
+      # rows so their PLT_CN isn't counted in nPlots.x/nPlots.y.
+      dplyr::filter(!is.na(AREA_BASIS)) %>%
       dplyr::group_by(PLT_CN, AREA_BASIS, !!!grp.syms) %>%
       dplyr::summarize(dplyr::across(.cols = c(!!!x.vars), \(x) sum(x, na.rm = TRUE))) %>% 
       dplyr::ungroup() %>%
@@ -1579,7 +1619,6 @@ sumToPlot <- function(x,
   return(x)
 }
 
-# TODO: 
 sumToEU <- function(db,
                     x,
                     y = NULL,
@@ -1734,7 +1773,7 @@ sumToEU <- function(db,
         dplyr::left_join(wgts, by = joinCols) %>%
         dplyr::mutate(dplyr::across(c(!!!x.var.m.syms), ~(.x * wgt))) %>%
         dplyr::mutate(dplyr::across(c(!!!x.var.v.syms, !!!x.var.c.syms), ~(.x * (wgt^2)))) %>%
-        dplyr::group_by(ESTN_UNIT_CN, P2PNTCNT_EU, !!!x.grp.syms) %>%
+        dplyr::group_by(ESTN_UNIT_CN, !!!x.grp.syms) %>%
         dplyr::summarize(dplyr::across(c(!!!x.var.m.syms, !!!x.var.v.syms, !!!x.var.c.syms, nPlots.x), \(x) sum(x, na.rm = TRUE)))
       yEU <- yEU %>%
         dplyr::left_join(dplyr::select(db$POP_ESTN_UNIT, CN, STATECD), by = c('ESTN_UNIT_CN' = 'CN')) %>%
@@ -1828,7 +1867,7 @@ sumToEU <- function(db,
         dplyr::left_join(wgts, by = joinCols) %>%
         dplyr::mutate(dplyr::across(c(!!!x.var.m.syms), ~(.x * wgt))) %>%
         dplyr::mutate(dplyr::across(c(!!!x.var.v.syms), ~(.x * (wgt^2)))) %>%
-        dplyr::group_by(ESTN_UNIT_CN, P2PNTCNT_EU, !!!x.grp.syms) %>%
+        dplyr::group_by(ESTN_UNIT_CN, !!!x.grp.syms) %>%
         dplyr::summarize(dplyr::across(c(!!!x.var.m.syms, !!!x.var.v.syms, nPlots.x), \(x) sum(x, na.rm = TRUE))) %>%
         dplyr::ungroup()
 

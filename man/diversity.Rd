@@ -17,7 +17,7 @@ diversity(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE, bySizeClass = F
 \arguments{
   \item{db}{\code{FIA.Database} or \code{Remote.FIA.Database} object produced from \code{\link{readFIA}} or \code{\link{getFIA}}. If a \code{Remote.FIA.Database}, data will be read in and processed state-by-state to conserve RAM (see details for an example).}
 
-  \item{grpBy}{variables from PLOT, PLOTGEOM, COND, or TREE tables to group estimates by (NOT quoted). Multiple grouping variables should be combined with \code{c()}, and grouping will occur heirarchically. For example, to produce seperate estimates for each ownership group within methods of stand regeneration, specify \code{c(STDORGCD, OWNGRPCD)}.}
+  \item{grpBy}{variables from PLOT, PLOTGEOM, COND, or TREE tables to group estimates by (NOT quoted). Multiple grouping variables should be combined with \code{c()}, and grouping will occur heirarchically. For example, to produce seperate estimates for each ownership group within methods of stand regeneration, specify \code{c(STDORGCD, OWNGRPCD)}. Note: grouping by \code{SUBP} produces each subplot's share of the plot-level per-acre estimate, not a re-weighted, subplot-local density -- see Details.}
 
   \item{polys}{\code{sp} or \code{sf} Polygon/MultiPolgyon object; Areal units to bin data for estimation. Seperate estimates will be produced for region encompassed by each areal unit. FIA plot locations will be reprojected to match projection of \code{polys} object.}
 
@@ -52,6 +52,20 @@ diversity(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE, bySizeClass = F
 
 
 \details{
+\strong{Grouping by SUBP}
+
+\code{SUBP} is a valid \code{grpBy} variable, but behaves differently from every other grouping
+variable this function supports (species, size class, ownership group, etc.). Those all partition
+trees or conditions \emph{within the same shared sampled area}, so the area denominator used to
+compute per-acre values is correctly left unchanged across groups. \code{SUBP}, in contrast, denotes
+a physically distinct sub-area of the plot -- each of the four subplots covers different ground.
+Grouping by \code{SUBP} still produces a mathematically valid partition of the plot-level estimate
+(each subplot's value is its share of the total, and the four subplot values sum back to the
+ungrouped estimate exactly), but it is \emph{not} a re-weighted, subplot-local density: the area
+denominator is not currently re-weighted to match each subplot's own area, since that would require
+subplot-level area proportions (from \code{SUBP_COND}) that this function does not use. If you need a
+genuine subplot-local per-acre estimate, this function does not currently provide one.
+
 \strong{Estimation Details}
 
 Estimation of forest variables follows the procedures documented in Bechtold and Patterson (2005) and \href{https://research.fs.usda.gov/treesearch/59521}{Stanke et al 2020}. Procedures for computing diversity indices are outlined in Hill (1973) and Shannon (1948).
@@ -90,6 +104,8 @@ Dataframe or sf object (if \code{returnSpatial = TRUE}). If \code{byPlot = TRUE}
       \item{\strong{S_a}: mean Species Richness, alpha (stand) level}
       \item{\strong{S_b}: Species Richness, beta (landscape) level}
       \item{\strong{S_g}: Species Richness, gamma (regional) level}
+      \item{\strong{nPlots_TREE}: number of non-zero plots used to compute alpha diversity estimates}
+      \item{\strong{nPlots_AREA}: number of non-zero plots used to compute land area estimates}
       }
 }
 
@@ -98,7 +114,7 @@ rFIA website: \url{https://doserlab.com/files/rfia/}
 
 FIA Database User Guide: \url{https://research.fs.usda.gov/understory/forest-inventory-and-analysis-database-user-guide-nfi}
 
-Bechtold, W.A.; Patterson, P.L., eds. 2005. The Enhanced Forest Inventory and Analysis Program - National Sampling Design and Estimation Procedures. Gen. Tech. Rep. SRS - 80. Asheville, NC: U.S. Department of Agriculture, Forest Service, Southern Research Station. 85 p. \url{https://www.srs.fs.usda.gov/pubs/gtr/gtr_srs080/gtr_srs080.pdf}
+Bechtold, W.A.; Patterson, P.L., eds. 2005. The Enhanced Forest Inventory and Analysis Program - National Sampling Design and Estimation Procedures. Gen. Tech. Rep. SRS - 80. Asheville, NC: U.S. Department of Agriculture, Forest Service, Southern Research Station. 85 p. \url{https://research.fs.usda.gov/download/treesearch/20371.pdf}
 
 Stanke, H., Finley, A. O., Weed, A. S., Walters, B. F., & Domke, G. M. (2020). rFIA: An R package for estimation of forest attributes with the US Forest Inventory and Analysis database. Environmental Modelling & Software, 127, 104664.
 
@@ -113,7 +129,7 @@ Shannon, C. E. (1948). A Mathematical Theory of Communication. Bell System Techn
 Jeffrey W. Doser, Hunter Stanke, Andrew Finley
 }
 
-\note{All percent sampling error estimates (SE) are returned as the "percent coefficient of variation" (standard deviation / mean * 100) for consistency with EVALIDator. To determine the margin of error for confidence intervals, use the following formula, t * (SE * mean / 100), where t is the corresponding t value for your desired level of confidence (e.g., approximately 2 for a 95\% confidence interval). To determine the degrees of freedom for the t value, use \code{nStands}. Alternatively, you can use a normal approximation for the confidence interval. The validity of the normal approximation decreases as the sample size decreases.}
+\note{All percent sampling error estimates (SE) are returned as the "percent coefficient of variation" (standard deviation / mean * 100) for consistency with EVALIDator. To determine the margin of error for confidence intervals, use the following formula, t * (SE * mean / 100), where t is the corresponding t value for your desired level of confidence (e.g., approximately 2 for a 95\% confidence interval). To determine the degrees of freedom for the t value, use \code{nPlots_AREA}. Alternatively, you can use a normal approximation for the confidence interval. The validity of the normal approximation decreases as the sample size decreases.}
 
 \examples{
 \dontshow{

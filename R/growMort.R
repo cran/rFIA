@@ -7,6 +7,7 @@ growMort <- function(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
 
   # Defuse user-supplied expressions in grpBy, areaDomain, and treeDomain
   grpBy_quo <- rlang::enquo(grpBy)
+  warnRiskyGrpBy(grpBy_quo)
   areaDomain <- rlang::enquo(areaDomain)
   treeDomain <- rlang::enquo(treeDomain)
 
@@ -49,8 +50,8 @@ growMort <- function(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
     # different reporting schedules (e.g., if 2016 is most recent in MI and 2017 
     # is most recent in WI, combine them and label as 2017. 
     if (mr) {
-      tEst <- combineMR(tEst)
-      aEst <- combineMR(aEst)
+      tEst <- combineMR(tEst, method)
+      aEst <- combineMR(aEst, method)
     }
 
     # Totals and ratios ---------------
@@ -144,7 +145,7 @@ growMort <- function(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
                     RECR_TOTAL_VAR:CHNG_TOTAL_VAR, PREV_TOTAL_VAR, CURR_TOTAL_VAR, AREA_TOTAL_VAR,
                     RECR_TPA_SE:CHNG_PERC_SE,
                     RECR_TOTAL_SE:CHNG_TOTAL_SE, PREV_TOTAL_SE, CURR_TOTAL_SE, AREA_TOTAL_SE,
-                    nPlots_TREE, nPlots_AREA) %>%
+                    nPlots_TREE, nPlots_RECR, nPlots_MORT, nPlots_REMV, nPlots_GROW, nPlots_AREA) %>%
       # Rounding errors can cause GROW_TPA to take an extremely small value instead of zero
       # Make it zero when this happens
       dplyr::mutate(dplyr::across(c(GROW_TPA, GROW_PERC, GROW_TOTAL,

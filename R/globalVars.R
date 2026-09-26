@@ -101,7 +101,7 @@ utils::globalVariables(c('ADJ_FACTOR_MACR', 'ADJ_FACTOR_MICR', 'ADJ_FACTOR_SUBP'
                          'VOL_DUFF_SE', 'bdCV', 'bdEst', 'bdPlot', 'bdStrat', 'bdV', 'bdVar', 'blCV', 'blEst', 'blPlot',
                          'blStrat', 'blV', 'blVar', 'cdCV', 'cdEst', 'cdPlot', 'cdStrat', 'cdV', 'cdVar', 'clCV', 'clEst',
                          'clPlot', 'clStrat', 'clV', 'clVar', 'dbConnect', 'dbListTables', 'nPlots_MORT',
-                         'nPlots_RECR', 'nPlots_REMV', 'p1_eu', 'plotIn_g', 'plotIn_h', 'plotIn_m', 'plotIn_r', 'progress', 'totalPlots',
+                         'nPlots_RECR', 'nPlots_REMV', 'nPlots_GROW', 'p1_eu', 'plotIn_g', 'plotIn_h', 'plotIn_m', 'plotIn_r', 'progress', 'totalPlots',
                          'COND_STATUS_CD.chng', 'COND_STATUS_CD.prev', 'GROWTH_ACCT', 'geometry', 'lazy_dt',
                          'BIO_AC_TOT', 'BIO_GROW', 'BIO_GROW_AC', 'BIO_GROW_AC_SE', 'BIO_GROW_SE', 'DIA.mid',
                          'DIA.prev', 'DRYBIO_AG.mid', 'DRYBIO_AG.prev', 'INVYR', 'VOLCFNET.mid',
@@ -300,6 +300,8 @@ utils::globalVariables(c('ADJ_FACTOR_MACR', 'ADJ_FACTOR_MICR', 'ADJ_FACTOR_SUBP'
                          'PREV_TOTAL', 'PREV_TOTAL_SE', 'PREV_TOTAL_VAR', 'cPlot_cv_t', 'pPlot', 'pPlot_mean',
                          'pPlot_var', 'state.prev', "CARBON_RATIO_LIVE", "DRYBIO_STEM", "DRYBIO_STEM_BARK", 
                          "DRYBIO_BRANCH", "DRYBIO_STUMP_BARK", "DRYBIO_BOLE_BARK", "DRYBIO_SAWLOG", 
-                         "DRYBIO_SAWLOG_BARK", "CARBON", "nPlots_AREA_DEN", "nPlots_AREA_NUM", "x.vars", "state.beg"
+                         "DRYBIO_SAWLOG_BARK", "CARBON", "nPlots_AREA_DEN", "nPlots_AREA_NUM", "x.vars", "state.beg",
+                         "COND_STATUS_CD1", "COND_STATUS_CD2", "COND_NONSAMPLE_REASN_CD", "SUBPTYP_GRM_SAW", 
+                         "TPAGROW_UNADJ_SAW", "COMPONENT_SAW"
 
 ))

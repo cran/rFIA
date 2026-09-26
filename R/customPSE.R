@@ -59,12 +59,21 @@ customPSE <- function(db, x, xVars, xGrpBy = NULL, xTransform = NULL,
   req.tables <- c('PLOT', 'POP_EVAL', 'POP_EVAL_TYP', 'POP_ESTN_UNIT', 'POP_STRATUM', 'POP_PLOT_STRATUM_ASSGN')
 
 
-  # If remote, read in state by state. Otherwise, drop all unnecessary tables
+  # Must check mr on the original db, before readRemoteHelper() below pares
+  # it down to only `req.tables` -- that subset silently drops the
+  # `mostRecent` marker clipFIA() attaches to the top-level list, which
+  # otherwise makes checkMR() always report FALSE and skip the combineMR()
+  # relabeling downstream (GitHub issue #47: a spatial mask spanning states
+  # with different "most recent" evaluation years returned separate rows per
+  # year instead of one combined estimate). Every other estimator dispatcher
+  # (e.g. tpa()) already computes mr this way, before any table-paring.
   remote <- ifelse(class(db) == 'Remote.FIA.Database', 1, 0)
+  mr <- checkMR(db, remote = remote)
+
+  # If remote, read in state by state. Otherwise, drop all unnecessary tables
   db <- readRemoteHelper(db$states, db, remote, req.tables, nCores = 1)
 
   # Pull the appropriate population tables
-  mr <- checkMR(db, remote = ifelse(class(db) == 'Remote.FIA.Database', 1, 0))
   pops <- handlePops(db, evalType = x$EVAL_TYP[[1]], method, mr)
 
   # Prep tables ---------------------------------------------------------------
@@ -170,8 +179,8 @@ customPSE <- function(db, x, xVars, xGrpBy = NULL, xTransform = NULL,
   # different reporting schedules, i.e., if 2016 is most recent in MI and 2017 is
   # most recent in WI, combine them and label as 2017
   if (mr) {
-    xEst <- combineMR(xEst)
-    if (!is.null(y)) yEst <- combineMR(yEst)
+    xEst <- combineMR(xEst, method)
+    if (!is.null(y)) yEst <- combineMR(yEst, method)
   }
 
 
@@ -196,12 +205,12 @@ customPSE <- function(db, x, xVars, xGrpBy = NULL, xTransform = NULL,
     xEst <- xEst %>%
       dplyr::select(-c(ESTN_UNIT_CN, AREA_USED)) %>%
       dplyr::group_by(!!!xGrpSyms) %>%
-      dplyr::summarize(dplyr::across(dplyr::everything(), sum, na.rm = TRUE))
+      dplyr::summarize(dplyr::across(dplyr::everything(), \(x) sum(x, na.rm = TRUE)))
 
     yEst <- yEst %>%
       dplyr::select(-c(ESTN_UNIT_CN, AREA_USED, P2PNTCNT_EU)) %>%
       dplyr::group_by( !!!yGrpSyms) %>%
-      dplyr::summarize(dplyr::across(dplyr::everything(), sum, na.rm = TRUE))
+      dplyr::summarize(dplyr::across(dplyr::everything(), \(x) sum(x, na.rm = TRUE)))
 
 
     # Join numerator/denominator, compute ratios
@@ -236,7 +245,7 @@ customPSE <- function(db, x, xVars, xGrpBy = NULL, xTransform = NULL,
     out <- xEst %>%
       dplyr::select(-c(ESTN_UNIT_CN, AREA_USED)) %>%
       dplyr::group_by(!!!xGrpSyms) %>%
-      dplyr::summarize(dplyr::across(dplyr::everything(), sum, na.rm = TRUE))
+      dplyr::summarize(dplyr::across(dplyr::everything(), \(x) sum(x, na.rm = TRUE)))
     out <- formatNames(out, xGrpBy)
 
   }

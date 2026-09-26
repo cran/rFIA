@@ -1,3 +1,369 @@
+# rFIA v1.2.0
+
+This version implements a variety of updates to model estimation functions after a complete validation of the package's functionality. An extensive suite of unit tests are implemented for checking `rFIA` estimates with estimates from EVALIDator to ensure consistency of rFIA with updates in FIADB. This validation assessment fixed multiple bugs, particularly related to the reporting of sample sizes that were not always consistent dependent on different filtering criteria implemented in the estimation functions. Updates are broken down in the following based on specific functions.  
+
+Full details on this validation are provided in the development version of `rFIA` on GitHub in the `core_references/validation` directory. Note that Claude Code was used to aid in the validation assessment, with code verified by Jeff Doser. 
+
+### `customPSE()`
+
++ Fixed a bug in `customPSE()` (GitHub issue #47) where a spatial mask (or any multi-state call)
+  spanning states with different `mostRecent` evaluation years returned one row per state/year instead
+  of a single combined estimate, unlike `area()`/`tpa()`/etc. on the same masked data. Root cause:
+  `customPSE()` checked `db` for `clipFIA(mostRecent = TRUE)`'s marker *after* an internal helper had
+  already pared `db` down to only the named FIA tables, which silently dropped that marker -- so the
+  step that relabels differing per-state "most recent" years to a common year before combining never
+  ran. Every other estimator dispatcher checks this before any table-paring happens, so none of them
+  were affected. 
++ Fixed a bug in `customPSE()` where `nPlots_x`/`nPlots_y` were inflated to the full forested-plot
+  count instead of the true number of non-zero contributing plots, whenever `x`/`y` was a tree-based
+  list (e.g. the `treeList = TRUE` output of `tpa()`/`volume()`). Point estimates and standard errors
+  were unaffected -- this was purely a plot-count/reporting bug, but it mattered because `customPSE.Rd`
+  documents `nPlots_x`/`nPlots_y` as the count of *non-zero* plots, used as the degrees of freedom for
+  a t-based confidence interval. Root cause: `sumToPlot()` (`R/util.R`), shared by every estimator, did
+  not filter out the phantom `TREE_BASIS`/`AREA_BASIS = NA` rows that a `treeList`/`condList` output
+  necessarily includes for forested conditions with zero qualifying trees -- each `*Starter.R` file
+  already filters these before its own population-estimate call, but `customPSE()` calls `sumToPlot()`
+  directly on user-supplied data. Confirmed against `tpa()`/`volume()`/`area()` across four states (one
+  per FIA region). 
++ Fixed a `dplyr::across()` deprecation warning in `customPSE()` (`...` was passed through to `.fns`
+  rather than wrapped in an anonymous function, deprecated as of dplyr 1.1.0).
+
+### Changes to multiple functions
+
++ `tpa()`, `biomass()`, `carbon()`, `volume()`, `growMort()`, `vitalRates()`, `diversity()`, `fsi()`,
+  `area()`, `areaChange()`, `standStruct()`, and `seedling()` now warn when `grpBy` includes `SUBP`.
+  Unlike every other `grpBy` variable these functions support (species, size class, ownership group,
+  etc.), which partition trees/conditions within the same shared sampled area, `SUBP` denotes a
+  physically distinct sub-area of the plot -- each subplot covers different ground. Grouping by `SUBP`
+  still produces a mathematically valid partition of the plot-level per-acre estimate (each subplot's
+  value is its share of the total, and the four values sum back to the ungrouped estimate exactly), but
+  it is not a re-weighted, subplot-local density, since the area denominator is not re-weighted to match
+  each subplot's own area. Documented in each function's `Details` section (issue #31). This warning is 
+  used to reflect that `rFIA` is not designed for extracting data for each subplot and subsequently using
+  that data within a model-based estimator. 
++ Fixed a bug in the shared internal utility used to evaluate a user-supplied `areaDomain` where the plots/conditions used to evaluate the domain expression were hard-coded to forest land (`PLOT_STATUS_CD == 1`/`COND_STATUS_CD == 1`), regardless of `landType`. This caused `area()` (and `areaChange()`) to silently return zero area for any combination of a non-forest `landType` (e.g. `'water'`, `'non-forest'`, `'all'`) with an `areaDomain` filter, instead of applying the filter and returning the correctly restricted estimate. This is a rare use case. 
++ Fixed a bug where `treeType = 'dead'` did not require dead trees to meet the "standing dead" tally-tree criteria (`STANDING_DEAD_CD == 1`), instead counting all trees with `STATUSCD == 2` regardless of whether they were still standing. This inflated `treeType = 'dead'` estimates in states with a meaningful number of down or broken dead trees recorded in the tree table (e.g. North Carolina, where the estimate was roughly 4x too high). This affects every function that supports `treeType`: `tpa()`, `diversity()`, `biomass()`, `volume()`, and `fsi()`. As a consequence, `treeType = 'all'` (which includes every tree regardless of status) is no longer equal to `treeType = 'live'` plus `treeType = 'dead'`, since `'all'` still includes the non-standing dead trees that `'dead'` now excludes.
+
+
+### `growMort()` and `vitalRates()`
+
++ Fixed a bug in `growMort()` and `vitalRates()` where `bySizeClass = TRUE` silently dropped removed
+  (harvested) and dead trees whose current-cycle diameter went unmeasured -- common for trees that are
+  too decayed, broken, or fully removed to measure at the time of remeasurement. `sizeClass` was
+  computed from the tree's current diameter and any row with a missing value was dropped before it was
+  ever joined to the growth/mortality/removal tables, even though those same tables already provide a
+  usable midpoint or begin diameter for exactly these trees. Confirmed against OR, where this undercut
+  `growMort()`'s harvested-basal-area estimate by up to 99% and its mortality estimate by up to 25% when
+  `bySizeClass = TRUE`; `bySizeClass = TRUE` totals (summed back across size classes) now match
+  `bySizeClass = FALSE` exactly in both functions (issue #40).
++ `growMort()` now returns `nPlots_RECR`, `nPlots_MORT`, `nPlots_REMV`, and `nPlots_GROW` -- separate
+  non-zero-plot counts for recruitment, mortality, harvest removal, and survivor growth, respectively.
+  The first three were already documented in `growMort.Rd` but never actually implemented;
+  `nPlots_GROW` is a new addition alongside them for consistency. Previously, only a single generic
+  `nPlots_TREE` (count of plots contributing to *any* of recruitment/mortality/removal/survivor-growth
+  combined) was returned, which understates the degrees of freedom appropriate for a t-based confidence
+  interval on an individual `MORT_*`/`REMV_*`/`RECR_*`/`GROW_*` rate. `nPlots_TREE` is unchanged.
+  Confirmed against EVALIDator's plot counts for the mortality/harvest-removal attributes (exact
+  match).
++ Fixed a bug in `growMort()` where `GROW_*`/`CHNG_*` (survivor growth / net change) were computed
+  incorrectly for every state variable except the default `TPA` -- `BAA`, volume, biomass, and carbon
+  outputs were all affected. The previous-period population total was reconstructed using each departed
+  tree's *midpoint* measurement (correct for the separately-reported `MORT_*`/`REMV_*` columns) instead
+  of its *begin* measurement, which EVALIDator's own growth-accounting definition of "net growth"
+  requires; a second, related bug caused mismatched `NA` handling across the `RECR`/`MORT`/`REMV`/`GROW`
+  columns for volume-based state variables (`NETVOL`, `SAWVOL`, `SAWVOL_BF`), whose underlying FIADB
+  columns are undefined for some trees below merchantability thresholds. `MORT_*`/`REMV_*` themselves,
+  and every output under the default `stateVar = 'TPA'`, were unaffected. This is likely related to the
+  "`growMort()` reporting zero survivor growth" bug fixed in v1.1.1.
++ Updated `growMort()` where state variables derived from tree biomass (`BIO_AG`, `BIO_BG`,
+  `BIO`, `CARB_AG`, `CARB_BG`, `CARB`) to now be reported in pounds instead of short tons/acre. This is 
+  for consistency with other estimation functions across the package. 
++ Fixed a bug in `growMort()` where an `areaDomain` filter was evaluated against a tree's *previous*
+  remeasurement condition rather than its current one, understating `MORT_*`/`REMV_*`/`RECR_*` estimates
+  in states with meaningful physiographic-class turnover between remeasurements (up to -6% in checks
+  against EVALIDator). This is the same bug already fixed in `vitalRates()`.
++ Fixed a bug in `growMort()` where the `SUBP_COND_CHNG_MTRX`-based growth-accounting area-change
+  calculation hardcoded `SUBPTYP == 1`, silently discarding area-change information for any condition
+  measured on the macroplot and understating `landType = 'forest'` estimates (and `nPlots_AREA`) in
+  macroplot-heavy states (e.g. Pacific Northwest). This is the same bug already fixed in `vitalRates()`.
++ Fixed a bug in `vitalRates()` where `SAWVOL_GROW`/`SAWVOL_GROW_AC` (sawlog board-foot volume
+  growth) was computed from the same growing-stock growth-accounting component used for the other
+  four growth metrics (`DIA_GROW`, `BA_GROW`, `NETVOL_GROW`, `BIO_GROW`), rather than the
+  sawtimber-specific component EVALIDator's sawlog-volume growth attributes are actually defined
+  against -- the same distinction `growMort()` already makes for its own `SAWVOL`/`SAWVOL_BF` state
+  variables, independent of `treeType`. This under- or over-stated `SAWVOL_GROW_AC` by roughly
+  0.3-3% depending on state. Point estimates and sampling errors for the other four growth metrics
+  were not affected.
++ Updated `vitalRates()` where an `areaDomain` restriction (e.g. `PHYSCLCD %in% 21:29`) was
+  applied to tree-level growth using the *previous* measurement's condition instead of the current
+  one, while the area (denominator) side already correctly used the current condition -- creating a
+  small, state-dependent mismatch (worse in states with more physiographic-class turnover between
+  remeasurements) whenever a plot's `areaDomain`-relevant classification changed between visits.
+  Point estimates for `areaDomain`-restricted calls were affected; unrestricted calls were not.
++ Fixed a bug in `vitalRates()` where `landType = 'forest'` silently dropped all area-change
+  information for any condition whose proportion was measured on the macroplot (`COND.PROP_BASIS ==
+  'MACR'`) rather than the standard subplot -- the internal area-change join hardcoded
+  `SUBP_COND_CHNG_MTRX.SUBPTYP == 1`, when the FIA Population Estimation User Guide's own
+  growth-accounting methodology requires `SUBPTYP == 3` for macroplot-basis conditions. This was
+  invisible in states where forest conditions are exclusively subplot-basis (confirmed for RI, NC,
+  CO), but caused a small, consistent undercount of `BIO_GROW_AC` (~-0.1%) and `nPlots_AREA` (~-0.6%)
+  in Pacific/Western states that commonly use macroplot sampling (confirmed for OR, CA, WA). A
+  residual, smaller discrepancy specific to `landType = 'timber'` exists with EVALIDator but is kept 
+  different in `rFIA`. See details in `core_references` for more details.
++ Fixed a bug in `vitalRates()` where `nPlots_TREE` did not reflect restrictions imposed by
+  `treeDomain` at all -- even a `treeDomain` matching zero trees left `nPlots_TREE` unchanged from the
+  unrestricted value. Every row of a `bySpecies = TRUE` call reported the same, unrestricted
+  `nPlots_TREE` regardless of how common that species actually was, defeating its use as the
+  degrees of freedom for a t-based confidence interval. Root cause: the tree list's plot-count filter
+  depended only on whether a tree had a valid growth-accounting record for the current
+  `landType`/`treeType` (via FIA's precomputed `TREE_GRM_COMPONENT` columns), not on whether the
+  user's `treeDomain`/`areaDomain` indicator (`tDI`) actually matched -- `tDI` only zeroed the growth
+  values for non-matching trees, without excluding them from the plot count. Point estimates and
+  sampling errors were not affected.
++ Fixed a bug in `vitalRates()` where `nPlots_AREA` did not reflect restrictions imposed by
+  `landType` or `areaDomain` at all (the same class of bug already fixed in `tpa()`, `area()`,
+  `carbon()`, `biomass()`, `volume()`, `dwm()`, `invasive()`, `seedling()`, `standStruct()`,
+  `diversity()`, and `vegStruct()`; see above), including the same spurious/empty-result-with-warning
+  edge case when a restriction matched no data. Point estimates and sampling errors were not affected.
++ Fixed a bug affecting `vitalRates()` and `growMort()` under `method = 'SMA'`/`'LMA'`/`'EMA'` where
+  growth/mortality totals (and every ratio derived from them, e.g. `BIO_GROW_AC`, `MORT_TPA`) were
+  inflated by roughly the number of remeasurement panels in the evaluation window -- up to ~9x in
+  testing. Root cause: a shared internal utility (`sumToEU()`) that combines per-panel moving-average
+  estimates into a single population estimate grouped the tree/growth side of the calculation by an
+  extra, panel-varying column that should not have been part of the grouping key, preventing panels
+  from actually being combined; `vitalRates()`/`growMort()`'s internal need to compute two related
+  population estimates and join them together turned this into a many-to-many join that squared the
+  row count. Every other estimator was unaffected in practice (a separate summation step downstream
+  happened to still produce the correct total), which is why this was not caught until now. `method =
+  'TI'` and `'ANNUAL'` were not affected.
+
+### `fsi()`
+
++ Fixed a bug in `fsi()` where the plot-level remeasurement interval (`REMPER`) was incorrectly
+  multiplied by the subplot/microplot/macroplot nonresponse adjustment factor before being used as a
+  grouping key to recombine a plot's per-plot-basis rows back into a single row. Because that
+  adjustment factor differs by plot basis, a single plot's rows ended up with different `REMPER`
+  values and so failed to recombine, leaving the same physical plot represented by multiple rows.
+  Tree-density sums still totaled correctly across those extra rows, but the subsequent area join (not
+  keyed on `REMPER`) re-attached a full copy of that plot's forest-area weight to each spurious row,
+  inflating the area denominator relative to the tree-count numerator. Values
+  from `byPlot = TRUE` were not affected, since they do not go through this code path.
++ Fixed the informative prior on the intercept of `fsi()`'s maximum size-density curve (Bayesian
+  quantile regression, `inst/extdata/qrLM.jag`/`qrLMM.jag`) to match Stanke et al. (2021): mean 7, not 6. 
+  The slope prior was already correct.
++ Fixed `fsi()`'s exclusion of disturbed/treated plots from the maximum size-density curve calibration
+  set to match Stanke et al. (2021): a plot showing evidence of disturbance *or* (non-natural-regen)
+  silvicultural treatment is now excluded, rather than requiring both simultaneously. Previously, a
+  plot with significant disturbance but no recorded follow-up treatment (e.g. an untreated wildfire)
+  was incorrectly retained in the calibration set.
++ Removed the `totals` argument from `fsi()`. It had no effect on the returned output (both branches
+  of the `totals`-dependent code returned identical columns) despite being documented as adding raw
+  population totals; every other estimator's `totals` argument works as documented; `fsi()`'s did not
+  and has been removed rather than implemented, since `FSI`/`PERC_FSI`/`PREV_RD`/`CURR_RD` are already
+  ratio quantities with no natural population-total analog.
++ Fixed a bug where `fsi(areaDomain = ...)` crashed with `"replacement has 1 row, data has 0"` when the
+  `areaDomain` (or `landType`) restricted the population to zero plots, instead of returning a clean
+  empty result. `byPlot = FALSE` now returns a 0-row result in this case (or when a `treeDomain`
+  matches zero trees, which previously returned a spurious 1-row result of `NaN`s instead of an empty
+  result); `byPlot = TRUE` keeps all plot rows with `FSI = 0`/`NA`, consistent with how `tpa()` and
+  `vitalRates()` already handle an empty domain.
++ Fixed a `dplyr::across()` deprecation warning raised by `fsi(method = 'ANNUAL')`.
+
+### `vegStruct()`
+
++ Updated `vegStruct()` to now include region-specific `GROWTH_HABIT_CD`s as opposed to only 
+  including the 5 core national vegetation growth-habit codes. 
++ Fixed a bug in `vegStruct()` where `byPlot = TRUE`'s per-plot cover estimate (`PROP_COVER`) used
+  `mean(cover, na.rm = TRUE)` across a layer/growth-habit combination's subplot-level cover values,
+  which treats a subplot where that combination wasn't recorded as a missing observation to exclude
+  from the average rather than a real 0%-cover observation to include (the same bug already fixed in
+  `invasive()`'s `byPlot` branch). This inflated `PROP_COVER` by up to 4x for a combination recorded on
+  fewer than all 4 subplots -- the normal case for patchy vegetation. Fixed by dividing by a fixed 4
+  subplots instead, matching the population-estimate branch's own formula. `byPlot = TRUE` was the only
+  affected output; the main population-level `COVER_PCT` was not affected.
++ Fixed a bug in `vegStruct()` where `nPlots_AREA` did not reflect restrictions imposed by `landType`
+  or `areaDomain` (the same class of bug already fixed in `tpa()`, `area()`, `carbon()`, `biomass()`,
+  `volume()`, `dwm()`, `invasive()`, `seedling()`, `standStruct()`, and `diversity()`; see below), and
+  an `areaDomain`/`landType` restriction matching no data could produce a spurious result instead of a
+  clean empty one. Point estimates and sampling errors were not affected by either fix.
++ Fixed a bug where `method = 'SMA'`/`'LMA'`/`'EMA'`/`'ANNUAL'` could error with `"replacement has
+  length zero"` instead of returning a result (or the existing "bad stratification" warning, when a
+  stratum is genuinely too small to merge). This is not specific to `vegStruct()`: the underlying
+  shared utility that pools too-small strata together (`R/util.R`, used by every `sumToEU()`-based
+  estimator) picked a stratum's cross-year merge partner without accounting for a stratum whose
+  `INVYR` is unknown -- reachable whenever a function restricts its plot universe before computing
+  population weights (as `vegStruct()` and `invasive()` do, for their P2-ancillary-protocol sampling
+  restrictions), which leaves some strata with no real year of their own. `tpa()`/`area()`/etc., which
+  don't restrict their plot universe this way, were confirmed unaffected -- their output is unchanged.
+
+### `diversity()`
+
++ Fixed a bug in `diversity()` where grouping by a `TREE`-table variable (`bySizeClass = TRUE`, or a
+  user-supplied `grpBy` referencing a `TREE` column, e.g. species group) corrupted the area
+  denominator: each forest condition's area was collapsed into whichever one grouping bin happened to
+  be encountered first, instead of correctly contributing to every bin its trees actually belong to.
+  This could push alpha-level Shannon's Equitability (`Eh_a`) above 1, which is mathematically
+  impossible under its own formula. Fixed by separating the area-only grouping columns from the full
+  grouping columns internally (matching `tpa()`'s existing `aGrpBy`/`grpBy` split), so a `TREE`-level
+  grouping variable no longer fragments the area total. `grpBy` restricted to `PLOT`/`COND` columns
+  (e.g. `OWNGRPCD`) was not affected.
++ Fixed a bug in `diversity()` where an `areaDomain`/`landType` restriction matching no data produced
+  a spurious result (`H = S = 0` with a `"no non-missing arguments to max"` warning) instead of a
+  clean empty result. `nPlots_AREA` also did not reflect restrictions imposed by `landType` or
+  `areaDomain` (the same class of bug already fixed in `tpa()`, `area()`, `carbon()`, `biomass()`,
+  `volume()`, `dwm()`, `invasive()`, `seedling()`, and `standStruct()`; see below). Point estimates and
+  sampling errors were not affected by either fix.
+
+### `standStruct()`
+
++ Fixed a bug in `standStruct()` where a forest condition with zero qualifying live trees (e.g. a
+  young/sparse/non-stocked stand) survives the internal tree-list join as a phantom row indistinguishable
+  from any other such condition on the same plot by `(PLT_CN, SUBP, TREE)` alone (`SUBP`/`TREE` are both
+  `NA`). Whenever a single plot had two or more zero-tree forest conditions, `distinct(PLT_CN, SUBP,
+  TREE)` collapsed them into one, silently dropping every zero-tree condition's area past the first from
+  its stand structural stage ("mosaic") classification -- even though that area still correctly counted
+  in the area total, so `COVER_PCT` summed across all four structural stages fell short of 100% (e.g.
+  North Carolina: 99.986% instead of 100%). Fixed by adding `CONDID` to the deduplication key.
++ Fixed a bug in `standStruct()` where an `areaDomain`/`landType` restriction matching no data produced
+  a spurious single-row `'mosaic'` result (with a `"no non-missing arguments to max"` warning) instead
+  of a clean empty result, because the internal structural-stage classification step could still assign
+  a fallback `'mosaic'` label to a plot with no real qualifying conditions. `nPlots_AREA` also did not
+  reflect restrictions imposed by `landType` or `areaDomain` (the same class of bug already fixed in
+  `tpa()`, `area()`, `carbon()`, `biomass()`, `volume()`, `dwm()`, `invasive()`, and `seedling()`; see
+  below). Point estimates and sampling errors were not affected by either fix.
+
+### `seedling()`
+
++ Fixed a bug in `seedling()` where the tree list's `distinct(PLT_CN, SUBP, SPCD)` deduplication key
+  omitted `CONDID`. Unlike `TREE`, `SEEDLING` has no per-stem ID -- `TPA_UNADJ` is already a count
+  pre-aggregated to the `PLT_CN`/`SUBP`/`CONDID`/`SPCD` grain by FIA -- so whenever a subplot straddled
+  two conditions and the same species had seedlings recorded under both, this silently discarded one
+  condition's count entirely. Confirmed on real data (North Carolina): this undercounted statewide
+  seedling TPA by ~0.2%, moving it from 1228.331 to the correct 1230.528 (matching EVALIDator exactly)
+  after the fix. Small/simple states (e.g. Rhode Island) rarely hit the triggering condition and were
+  unaffected.
++ Fixed a bug in `seedling()` where `nPlots_TREE` counted every forest plot rather than just plots
+  with at least one live seedling actually recorded, because its `TREE_BASIS` column (always `'MICR'`
+  for seedlings) couldn't detect a phantom "no seedling" row the way `tpa()`'s `DIA`-derived
+  `TREE_BASIS` does. Point estimates and sampling errors were not affected, only the reported plot count.
++ Fixed a bug in `seedling()` where `nPlots_AREA` did not reflect restrictions imposed by `landType` or
+  `areaDomain` (the same class of bug already fixed in `tpa()`, `area()`, `carbon()`, `biomass()`,
+  `volume()`, `dwm()`, and `invasive()`; see below -- `seedling()` was the one remaining estimator
+  missing this fix). Point estimates and sampling errors were not affected.
+
+### `invasive()`
+
++ Updated the internal `REF_PLANT_DICTIONARY` reference table (used by `invasive()` to attach a scientific/common name to each invasive species code) from an out-of-date snapshot to the current version provided by FIA. The previous version only included species-level PLANTS codes; genus-level codes (used whenever field crews identify an invasive plant's genus but not its exact species, e.g. `LIGUS2` for *Ligustrum* spp., a major invasive shrub genus in the southeastern US) were entirely absent. Because the name columns are part of `invasive()`'s internal grouping and its final output step drops any row with a missing group value, every genus-level species was silently dropped from the output entirely -- not just its name, but its real `COVER_PCT` data. This affected up to 36% of raw invasive-species records in the states checked (North Carolina). `tpa()`/`biomass()`/`volume()`'s analogous tree-species reference table was checked and does not have this problem.
++ Fixed a bug in `invasive()` where `byPlot = TRUE`'s per-plot cover estimate (`PROP_INV_COVER`) used `mean(cover, na.rm = TRUE)` across a species' subplot-level cover values, which treats a subplot where the species wasn't recorded as a missing observation to exclude from the average rather than a real 0%-cover observation to include. This inflated `PROP_INV_COVER` by up to 16x for a species detected on fewer than all 4 subplots -- the normal case for patchy invasive species. Fixed by dividing by a fixed 4 subplots instead. As part of this fix, `byPlot = TRUE` now also returns a `PROP_FOREST` column (the proportion of the plot meeting the land type/area domain, i.e. `CONDPROP_UNADJ`-weighted forest proportion), matching the same split already used by `biomass()`'s `byPlot = TRUE` output (`BIO_ACRE`/`PROP_FOREST`) -- `PROP_INV_COVER` itself is not weighted by plot forest proportion. `byPlot = TRUE` was the only affected output; the main population-level `COVER_PCT` was not affected.
++ Fixed a bug in `invasive()` where `nPlots_AREA` did not reflect restrictions imposed by `landType` or `areaDomain`, instead always reporting the plot count for the broader unrestricted land base (the same class of bug already fixed in `tpa()`, `area()`, `carbon()`, `biomass()`, `volume()`, and `dwm()`; see above -- `invasive()` was the one remaining estimator missing this fix). Point estimates and sampling errors were not affected.
++ Fixed a bug in `invasive()` where an `areaDomain`/`landType` restriction matching no data could produce a spurious `"no non-missing arguments to max"` warning instead of a clean empty result, unlike every other estimation function (which this warning class was already fixed for). Root cause: the population-estimation branch was missing a filter to drop conditions with no detected invasive species, present only in the (separate) `byPlot` branch's code; when every species group was empty, the resulting phantom "no species" row(s), rather than a genuinely empty result, bypassed the existing 0-row guard in the shared `combineMR()` utility.
+
+### `biomass()` and `carbon()`
+
++ `biomass()` no longer estimates carbon (`CARB_ACRE`/`CARB_TOTAL`/associated SE and variance columns have been removed from its output). Tree biomass estimation is otherwise unchanged. Use `carbon()` for carbon stock estimation, which covers the full suite of forest ecosystem carbon pools (live and dead trees, understory vegetation, down dead wood, litter, and soil organic matter), not just standing tree carbon.
++ Fixed a bug in `carbon()` and `biomass()` where `nPlots_AREA` did not reflect restrictions imposed by `landType` or `areaDomain`, instead always reporting the plot count for the broader unrestricted land base (the same class of bug already fixed in `tpa()` and `area()`; see above). Point estimates and sampling errors were not affected. For `carbon()` specifically, this also caused an `areaDomain` matching no conditions to return a row of `NaN` values instead of a clean empty result, since `carbon()`'s numerator is built by joining onto the same phantom-row-containing condition list; this is now a clean 0-row result, consistent with every other estimation function.
++ Fixed a bug in `biomass()` where `nPlots_TREE` over-counted plots for any `component` (or `byComponent`) request restricted to `STEM`, `STEM_BARK`, `STUMP_BARK`, `BOLE`, `BOLE_BARK`, or `BRANCH`, in states with a meaningful amount of woodland-form forest (e.g. pinyon-juniper woodland in Arizona, Utah, and Colorado). NSVB does not model these components for woodland species (`DRYBIO_STEM`/etc. are `NA`, not 0, for e.g. juniper and pinyon), and while their 0 contribution to `BIO_ACRE`/`BIO_ACRE_SE` was already handled correctly, plots whose only tallied trees were woodland species were still being counted toward `nPlots_TREE`. This inflated `nPlots_TREE` by up to ~3x in woodland-heavy states (e.g. Arizona `BRANCH`: 3137 reported vs. 842 actual contributing plots); point estimates and sampling errors were not affected.
+
+### `areaChange()`
+
++ Fixed a bug in `areaChange()` where a condition that was nonsampled (`COND_STATUS_CD == 5`, e.g. hazardous or denied-access) at either measurement was misclassified as a genuine forest/non-forest (or timberland/non-timberland) land-use change event, since the shared `landTypeDomain()` helper has no distinct category for "nonsampled" -- it simply isn't forest, indistinguishable from a real non-forest reclassification. This fabricated diversion/reversion events that never actually occurred, and could bias `AREA_CHNG`/`PERC_CHNG` in either direction depending on how the affected plots happened to fall; confirmed on real data that this flipped the sign of the reported net change in forest area for Rhode Island. `area()` was not affected (a nonsampled condition simply contributes no area there, rather than being paired against a different point in time).
+
+### `area()`
+
++ Fixed a bug in `area()` where a hard-coded `PLOT_STATUS_CD == 1` filter (a leftover from code shared with `tpa()`, where it is valid since trees only occur on forest land) silently dropped every plot with no accessible forest before land-type domain indicators were applied. This caused large undercounts (up to two orders of magnitude) for every `landType` value other than the defaults of `'forest'`/`'timber'` (e.g. `'water'`, `'non-forest'`, `'all'`), and caused the documented `byLandType = TRUE` output to sum to well under the true total land area. `landType = 'forest'`/`'timber'` estimates were not affected.
++ Fixed a bug in `area()` where `nPlots_AREA_DEN` did not reflect restrictions imposed by `landType = 'timber'` or `areaDomain`, instead always reporting the plot count for the broader `landType = 'forest'` land base (the same class of bug as the `tpa()` `nPlots_AREA` fix described below). Point estimates and sampling errors were not affected.
++ Updated `area()` where `landType = 'all'` to now explicitly remove nonsampled conditions from the land area calculation (e.g. hazardous or denied-access plots). In prior versions, nonsampled conditions were included in the count of `landType = 'all'`, but this resulted in the sum of the different components when `byLandType = TRUE` to not sum to the total when `landType = 'all'`. 
++ Fixed a bug where `method = 'ANNUAL'` silently summed together every constituent panel's population
+  estimate into a single, badly inflated row (with an inflated plot count to match) instead of
+  reporting each sampled panel-year's own estimate separately, whenever it was run against a database
+  that had been restricted to a single "most recent" evaluation (e.g. via `clipFIA(mostRecent = TRUE)`).
+  Confirmed on Rhode Island: `area(clipFIA(fiaRI, mostRecent = TRUE), method = 'ANNUAL')` previously
+  returned a single row (labeled with the evaluation's nominal year) that was actually the sum of all 7
+  constituent panels' area estimates; it now correctly returns 7 separate rows, one per sampled
+  panel-year, matching the values obtained by running `method = 'ANNUAL'` against the full, unclipped
+  inventory history. Root cause: a shared internal utility (`combineMR()`, used to reconcile different
+  states' differing "most recent" reporting years under the `'TI'`/`'SMA'`/`'LMA'`/`'EMA'` estimators)
+  was also being unconditionally applied to `'ANNUAL'` output, which legitimately contains multiple
+  distinct-year rows per state -- `combineMR()` relabeled all of them to the same year, causing a
+  subsequent aggregation step to sum them together. This affects every estimation function that
+  supports `method = 'ANNUAL'` (not just `area()`), since `combineMR()` is shared internal utility;
+  confirmed the identical corruption and fix for `tpa()`. `'TI'`, `'SMA'`, `'LMA'`, and `'EMA'` were not
+  affected, since they already returned a single row per state before reaching this step.
+
+### `volume()`
+
++ Fixed a bug in `volume()` where `nPlots_AREA` did not reflect restrictions imposed by `landType` or `areaDomain`, instead always reporting the plot count for the broader unrestricted land base (the same class of bug already fixed in `tpa()`, `area()`, `carbon()`, and `biomass()`; see above -- `volume()` was the one remaining estimator missing this fix). Point estimates and sampling errors were not affected.
++ Fixed two related bugs in `volume()` where `nPlots_TREE` over-counted plots: (1) trees with no defined bole volume (e.g. dead trees under 5 inches DBH, for which `VOLCFNET` is never computed) were still counted, the same class of bug just fixed in `biomass()` but triggered by tree diameter rather than species; and (2) trees with a defined but exactly-zero net volume (a full cull/defect deduction can legitimately zero out `VOLCFNET`) were counted, where EVALIDator's own definitions require a strictly positive volume to count a tree as contributing. Point estimates and sampling errors were not affected; `nPlots_TREE` was inflated by a few percent in the states checked (e.g. Rhode Island `treeType = 'dead'`: 107 reported vs. 103 actual contributing plots).
+
+### `dwm()`
+
++ Fixed a bug in `dwm()` where `nPlots_AREA` did not reflect restrictions imposed by `landType` or `areaDomain`, instead always reporting the plot count for the broader unrestricted land base (the same class of bug already fixed in `tpa()`, `area()`, `carbon()`, `biomass()`, and `volume()`; see above -- `dwm()` was the one remaining estimator missing this fix). Point estimates and sampling errors were not affected.
++ Fixed a bug in `dwm()` where `COND_DWM_CALC` was filtered by `PLT_CN` alone when restricting to the current evaluation, but a single plot can appear in `COND_DWM_CALC` under several different `EVALID`s (consecutive annual panels can each report the same not-yet-remeasured plot as their most recent down woody material data), each with slightly different evaluation/stratum-specific adjustment factors. This caused every down woody material condition to be summed once per matching `EVALID` instead of once, inflating the reported `nPlots_DWM` plot count by roughly 4-5x in the states checked (e.g. Colorado: 17775 reported vs. 3897 actual contributing plots) and, more subtly, adding spurious phantom estimation-unit groups with no effect on the final point estimate or standard error (their area contribution was always `NA` and dropped), but real effect on the plot count. Point estimates and sampling errors were not affected; only `nPlots_DWM` was.
++ Fixed a bug in `dwm()` where `nPlots_DWM` counted every domain-qualifying, DWM-sampled plot regardless of whether it actually had any down woody material of the relevant fuel type, instead of requiring a strictly positive value (matching EVALIDator's own per-attribute definitions, and the same class of fix just made in `volume()`). This was checked and fixed separately for the combined default output (`byFuelType = FALSE`, which requires total FWD + CWD + pile volume across all fuel types to be positive, matching EVALIDator's combined "Total volume of DWM" attribute) and for `byFuelType = TRUE`'s individual fuel-type rows (each of which now requires only its own fuel type's volume -- or biomass, for `DUFF`/`LITTER`, which have no volume equivalent -- to be positive, matching each fuel type's own EVALIDator attribute). Point estimates and sampling errors were not affected.
++ Fixed a bug in `dwm()` under `method = 'SMA'`, `'LMA'`, `'EMA'`, and `'ANNUAL'` where the down woody material numerator was post-stratified using each plot's original stratum assignment (from `COND_DWM_CALC`), while the area denominator used the strata produced after small strata were merged (needed for variance estimation of annual panels). Plots moved into a neighboring stratum were therefore assigned to different strata in the numerator and denominator. Under the moving-average methods, numerator rows with no matching denominator stratum/panel/group were silently dropped, so down woody material totals were underestimated, and totals across `grpBy` groups did not sum to the ungrouped total (e.g. Colorado, `areaDomain = PHYSCLCD %in% 21:29`, `method = 'SMA'`: 13.75 vs. 14.47 billion cubic feet after the fix). The numerator now uses the same (merged) strata as the denominator. Estimates with `method = 'TI'` (the default) were not affected.
+
+### `tpa()`
+
++ Fixed a bug in `tpa()` where `nPlots_AREA` did not reflect restrictions imposed by `landType = 'timber'` or `areaDomain`, instead always reporting the plot count for the broader `landType = 'forest'` land base. Point estimates and sampling errors were not affected, but `nPlots_AREA` is documented as the recommended degrees of freedom for constructing t-based confidence intervals, so an inflated count understated the true margin of error for any `landType = 'timber'` or `areaDomain`-restricted estimate.
++ Fixed a bug where a `treeDomain`/`areaDomain` matching no data, combined with the default `mostRecent = TRUE` behavior, produced a spurious `"no non-missing arguments to max"` warning instead of a clean empty result. This affected all estimation functions (not just `tpa()`), since the underlying cause was in a shared internal utility.
++ Documented in `tpa.Rd` why tree records with a missing diameter (`DIA`) -- most often standing dead
+  trees revisited after death, common in western US inventories -- are excluded from `tpa()` estimates
+  regardless of `treeType`: these records also lack `TPA_UNADJ` (FIA's per-acre expansion factor, which
+  itself depends on `DIA` to determine subplot design), so they have no valid per-acre weight under
+  FIA's design-based estimator and are excluded from EVALIDator's estimates for the same reason.
+  Confirmed `treeType = 'dead'` still matches EVALIDator to full precision in OR, where this affects a
+  large fraction of dead-tree records (issue #32).
++ Fixed a bug where `method = 'EMA'` silently accepted a `lambda` outside its documented `(0,1)` range
+  and returned degenerate weights instead of an error -- `NaN` for every panel at the exact boundaries
+  (`lambda = 0` or `1`), a negative weight for `lambda < 0`, or an inverted (oldest-weighted-highest)
+  recency ordering for `lambda > 1`. `lambda` is now validated up front with a clear error message.
+  This affected every estimation function (not just `tpa()`), since the underlying weighting logic is a
+  shared internal utility used by all of them, plus `fsi()` and `customPSE()`.
++ Fixed a bug where `method = 'ANNUAL'` did not correctly select the best FIA evaluation to draw a
+  panel's standalone estimate from, when that panel is a constituent of more than one evaluation's
+  multi-panel window (common: e.g. panel year 2009 is part of both a 2013 evaluation's 5-panel window
+  and a 2014 evaluation's window). The comparison across candidate evaluations was accidentally a
+  no-op, so which one's numbers ended up in the output was arbitrary (whichever came first
+  internally) rather than the one with the most plots, as intended. This affected every estimation
+  function using `method = 'ANNUAL'`, since the underlying selection logic is a shared internal
+  utility.
+
+### `plotFIA()`
+
++ Fixed a bug in `plotFIA()` where `animate = TRUE` errored with `could not find function
+  "transition_manual"` for any non-spatial (time-series) summary, since `transition_manual()` was
+  called unqualified rather than as `gganimate::transition_manual()` -- `gganimate` is a `Suggests`
+  dependency only, never attached by `library()`. The analogous call in the spatial (choropleth map)
+  branch was already correctly qualified. This is the same class of bug fixed in v1.1.1, which only
+  fixed the spatial branch's call.
++ Fixed a bug in `plotFIA()` where saving an animated plot (`animate = TRUE` with `savePath`/`fileName`)
+  always errored with `could not find function "anim_save"`, for the same reason as above --
+  `anim_save()` is now called as `gganimate::anim_save()`.
++ Implemented the `min.year` argument, which was documented ("earliest year to be included in
+  animation") but had no effect on the returned plot. `animate = TRUE` now drops years before
+  `min.year` from the animation; static plots are unaffected.
+
+### `writeFIA()`
+
++ Fixed a bug in `writeFIA()` where 16-digit CNs (e.g., `CN`, `PLT_CN`, `PREV_PLT_CN`) were silently
+  rounded to 15 significant digits on writing (e.g., `1097572188290487` was written as
+  `1097572188290490`), since `data.table::fwrite()` writes doubles with at most 15 significant digits.
+  Because recent FIADB CNs have 16 digits, reading tables with `readFIA()`, modifying them, and saving
+  them with `writeFIA()` broke the joins between the saved tables and any unmodified ones (e.g., COND
+  rows no longer matched their PLOT and TREE rows), dropping recent plots from all subsequent
+  estimates. CN columns are now written as exact integers.
+
+### Vignettes
+
++ Added a new vignette ("Validating rFIA against EVALIDator") that reports, for each estimation
+  function, how many unit tests compare `rFIA` estimates to EVALIDator and whether they passed, along
+  with a history of results across test runs.
+
+### Documentation
+
++ Updated the link to Bechtold and Patterson (2005) in all help files and the "FIA Demystified" vignette to its new location
+  (https://research.fs.usda.gov/download/treesearch/20371.pdf).
+
 # rFIA v1.1.4
 
 + Removed `.dots` argument from all calls to `dplyr::group_by()`, which resulted in an error with the latest version of `dplyr` (see [#54](https://github.com/doserjef/rFIA/issues/54)).  

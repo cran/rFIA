@@ -57,12 +57,24 @@ Specifically, percent areal coverage is computed using a sample-based ratio-of-m
 }
 
 \strong{Growth habit}
+
+The 5 growth habit categories below are recorded nationwide, by every FIA work unit:
 \itemize{
-  \item \emph{Forbs}: herbaceous, broad-leaved plants; includes non-woody-vines and ferns (does not include mosses and cryptobiotic crusts). 
+  \item \emph{Forbs}: herbaceous, broad-leaved plants; includes non-woody-vines and ferns (does not include mosses and cryptobiotic crusts).
   \item \emph{Graminoids}: grasses and grass-like plants (includes rushes and sedges).
-  \item \emph{Non-tally tree}: tree species not on a particular FIA work unit's tree tally list that are woody plants with a single well-defined, dominant main stem, not supported by other vegetation or structures (not vines), and which are, or expected to become, greater than 13 feet in height. Seedlings, saplings, and mature plants are included. 
-  \item \emph{Shrubs/vines}: woody, multiple-stemmed plants of any size, subshrubs (low-growing shrubs under 1.5 feet tall at maturity), and woody vines. Most cacti are included in this category. 
-  \item \emph{Tally tree}: all core tree species and any core optional tree species selected by a particular FIA work unit. Only tree species on the FIA Master Tree Species List (or those listed as hybrid, variety, or subspecies) are included. Any plant of that species is included, regardless of its shape and regardless of whether it was tallied on the subplot or microplot during the tree tally. Seedlings, saplings, and mature plants are included. 
+  \item \emph{Non-tally tree}: tree species not on a particular FIA work unit's tree tally list that are woody plants with a single well-defined, dominant main stem, not supported by other vegetation or structures (not vines), and which are, or expected to become, greater than 13 feet in height. Seedlings, saplings, and mature plants are included.
+  \item \emph{Shrubs/vines}: woody, multiple-stemmed plants of any size, subshrubs (low-growing shrubs under 1.5 feet tall at maturity), and woody vines. Most cacti are included in this category.
+  \item \emph{Tally tree}: all core tree species and any core optional tree species selected by a particular FIA work unit. Only tree species on the FIA Master Tree Species List (or those listed as hybrid, variety, or subspecies) are included. Any plant of that species is included, regardless of its shape and regardless of whether it was tallied on the subplot or microplot during the tree tally. Seedlings, saplings, and mature plants are included.
+}
+
+The growth habit categories below are each populated by only a single FIA work unit (or a small subset of units), rather than nationwide, so they will only appear in \code{vegStruct()}'s output when the input data includes plots from the relevant unit(s):
+\itemize{
+  \item \emph{All vegetation}: total vegetation cover, not broken out by growth habit. Only populated for plots measured under an older field protocol version (\code{PLOT.MANUAL < 5.0}).
+  \item \emph{Bare soil}: mineral material that, when viewed from above, is not over-topped by grass, forbs, shrubs, or seedlings, and is not covered by duff, litter, cowpies, woody debris, moss, or other material (sand, stones, and bedrock are not considered bare soil). Only populated for plots measured under an older field protocol version (\code{PLOT.MANUAL < 5.0}).
+  \item \emph{Dead pinyon species shrubs}: dead pinyon-species shrubs, and dead portions of live pinyon-species shrubs, on plots field-recorded as Rocky Mountain juniper, juniper woodland, pinyon-juniper woodland, or western juniper forest type. Only populated by certain Interior West FIA work units.
+  \item \emph{Moss/bryophytes}: nonvascular, terrestrial green plants, including mosses, hornworts, and liverworts. Only populated for the Pacific Islands.
+  \item \emph{Newly sprouted shrub cover}: cover of newly sprouted shrubs after fire. Only populated for Pacific Northwest Research Station Fire Effects and Recovery Study (FERS) plots.
+  \item \emph{Seedlings}: small trees less than 1 inch d.b.h./d.r.c. Only populated for plots measured under an older field protocol version (\code{PLOT.MANUAL < 5.0}).
 }
 
 Users may specify alternatives to the 'Temporally Indifferent' estimator using the \code{method} argument. Alternative design-based estimators include the annual estimator ("ANNUAL"; annual panels, or estimates from plots measured in the same year), simple moving average ("SMA"; combines annual panels with equal weight), linear moving average ("LMA"; combine annual panels with weights that decay \emph{linearly} with time since measurement), and exponential moving average ("EMA"; combine annual panels with weights that decay \emph{exponentially} with time since measurement). The "best" estimator depends entirely on user-objectives, see \href{https://research.fs.usda.gov/treesearch/59521}{Stanke et al 2020} for a complete description of these estimators and tradeoffs between precision and temporal specificity.
@@ -70,6 +82,9 @@ Users may specify alternatives to the 'Temporally Indifferent' estimator using t
 When \code{byPlot = FALSE} (i.e., population estimates are returned), the "YEAR" column in the resulting dataframe indicates the final year of the inventory cycle that estimates are produced for. For example, an estimate of current forest area (e.g., 2018) may draw on data collected from 2008-2018, and "YEAR" will be listed as 2018 (consistent with EVALIDator). However, when \code{byPlot = TRUE} (i.e., plot-level estimates returned), the "YEAR" column denotes the year that each plot was measured (MEASYEAR), which may differ slightly from its associated inventory year (INVYR).
 
 Stratified random sampling techniques are most often employed to compute estimates in recent inventories, although double sampling and simple random sampling may be employed for early inventories. Estimates are adjusted for non-response bias by assuming attributes of non-response plot locations to be equal to the mean of other plots included within thier respective stratum or population.
+
+
+\strong{NOTE}: when using \code{vegStruct()} to estimate cover in a state with a restricted sample for which P2Veg plots are recorded (i.e., the Northern region), the TOTAL provided when \code{totals = TRUE} will not be estimated totals across the entire domain of interest (e.g., a state) and rather represent the totals within forest area that was sampled by the P2veg protocol. Thus, for the Northern region, TOTAL estimates should only be used in extreme caution. For regions where all phase 2 plots are included for measuring vegetation (i.e., PNW, Rocky Mountain Region), the total estimates can be reliably used as estimates of invasive species area and total forest area across the region of interest.  
 
 \strong{Working with "Big Data"}
 
@@ -104,7 +119,7 @@ rFIA website: \url{https://doserlab.com/files/rfia/}
 
 FIA Database User Guide: \url{https://research.fs.usda.gov/understory/forest-inventory-and-analysis-database-user-guide-nfi}
 
-Bechtold, W.A.; Patterson, P.L., eds. 2005. The Enhanced Forest Inventory and Analysis Program - National Sampling Design and Estimation Procedures. Gen. Tech. Rep. SRS - 80. Asheville, NC: U.S. Department of Agriculture, Forest Service, Southern Research Station. 85 p. \url{https://www.srs.fs.usda.gov/pubs/gtr/gtr_srs080/gtr_srs080.pdf}
+Bechtold, W.A.; Patterson, P.L., eds. 2005. The Enhanced Forest Inventory and Analysis Program - National Sampling Design and Estimation Procedures. Gen. Tech. Rep. SRS - 80. Asheville, NC: U.S. Department of Agriculture, Forest Service, Southern Research Station. 85 p. \url{https://research.fs.usda.gov/download/treesearch/20371.pdf}
 
 Stanke, H., Finley, A. O., Weed, A. S., Walters, B. F., & Domke, G. M. (2020). rFIA: An R package for estimation of forest attributes with the US Forest Inventory and Analysis database. Environmental Modelling & Software, 127, 104664.
 }

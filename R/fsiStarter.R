@@ -2,7 +2,7 @@ fsiStarter <- function(x, db, grpBy_quo = NULL, scaleBy_quo = NULL, polys = NULL
                        returnSpatial = FALSE, bySpecies = FALSE, bySizeClass = FALSE,
                        landType = 'forest', treeType = 'live', method = 'TI',
                        lambda = .5, treeDomain = NULL, areaDomain = NULL,
-                       totals = FALSE, byPlot = FALSE, useSeries = FALSE,
+                       byPlot = FALSE, useSeries = FALSE,
                        mostRecent = FALSE, nCores = 1, remote, mr) {
   
   # Read required data, prep the database -------------------------------------
@@ -101,7 +101,8 @@ fsiStarter <- function(x, db, grpBy_quo = NULL, scaleBy_quo = NULL, polys = NULL
                                   db$COND$SITECLCD, db$COND$RESERVCD)
   # Tree type
   db$TREE$typeD <- treeTypeDomain(treeType, db$TREE$STATUSCD,
-                                  db$TREE$DIA, db$TREE$TREECLCD)
+                                  db$TREE$DIA, db$TREE$TREECLCD,
+                                  db$TREE$STANDING_DEAD_CD)
   
   # Spatial boundary (determine which of the plots fall within the polygons
   # supplied in polys)

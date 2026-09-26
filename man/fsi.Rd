@@ -13,7 +13,7 @@ fsi(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
     bySpecies = FALSE, bySizeClass = FALSE,
     landType = "forest", treeType = "live", method = "TI",
     lambda = 0.5, treeDomain = NULL, areaDomain = NULL,
-    totals = TRUE, variance = TRUE, byPlot = FALSE,
+    variance = TRUE, byPlot = FALSE,
     useSeries = FALSE, mostRecent = FALSE, scaleBy = NULL,
     betas = NULL, returnBetas = FALSE, nCores = 1)
 }
@@ -22,7 +22,7 @@ fsi(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
 \arguments{
   \item{db}{\code{FIA.Database} or \code{Remote.FIA.Database} object produced from \code{readFIA()} or \code{getFIA()}. If a \code{Remote.FIA.Database}, data will be read in and processed state-by-state to conserve RAM (see details for an example).}
 
-\item{grpBy}{variables from PLOT, PLOTGEOM, COND, or TREE tables to group estimates by (NOT quoted). Multiple grouping variables should be combined with \code{c()}, and grouping will occur heirarchically. For example, to produce separate estimates for each ownership group within methods of stand regeneration, specify \code{c(STDORGCD, OWNGRPCD)}.}
+\item{grpBy}{variables from PLOT, PLOTGEOM, COND, or TREE tables to group estimates by (NOT quoted). Multiple grouping variables should be combined with \code{c()}, and grouping will occur heirarchically. For example, to produce separate estimates for each ownership group within methods of stand regeneration, specify \code{c(STDORGCD, OWNGRPCD)}. Note: grouping by \code{SUBP} produces each subplot's share of the plot-level per-acre estimate, not a re-weighted, subplot-local density -- see Details.}
 
   \item{polys}{\code{sp} or \code{sf} Polygon/MultiPolgyon object; Areal units to bin data for estimation. Separate estimates will be produced for region encompassed by each areal unit. FIA plot locations will be reprojected to match projection of \code{polys} object.}
 
@@ -44,8 +44,6 @@ fsi(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
 
   \item{areaDomain}{logical predicates defined in terms of the variables in PLOT and/or COND tables. Used to define the area for which estimates will be produced (e.g. within 1 mile of improved road: \code{RDDISTCD \%in\% c(1:6)}, Hard maple/basswood forest type: \code{FORTYPCD == 805)}. Multiple conditions are combined with \code{&} (and) or \code{|} (or). Only plots within areas where the condition evaluates to TRUE are used in producing estimates. Should NOT be quoted.}
 
-  \item{totals}{logical; if TRUE, return total population estimates (e.g. total area) along with ratio estimates (e.g. mean trees per acre).}
-
     \item{variance}{logical; if TRUE, return estimated variance (\code{VAR}) and sample size (\code{N}). If FALSE, return 'sampling error' (\code{SE}) as returned by EVALIDator. Note: sampling error cannot be used to construct confidence intervals.}
 
   \item{byPlot}{logical; if TRUE, returns estimates for individual plot locations instead of population estimates.}
@@ -64,6 +62,20 @@ fsi(db, grpBy = NULL, polys = NULL, returnSpatial = FALSE,
 
 }
 \details{
+\strong{Grouping by SUBP}
+
+\code{SUBP} is a valid \code{grpBy} variable, but behaves differently from every other grouping
+variable this function supports (species, size class, ownership group, etc.). Those all partition
+trees or conditions \emph{within the same shared sampled area}, so the area denominator used to
+compute per-acre values is correctly left unchanged across groups. \code{SUBP}, in contrast, denotes
+a physically distinct sub-area of the plot -- each of the four subplots covers different ground.
+Grouping by \code{SUBP} still produces a mathematically valid partition of the plot-level estimate
+(each subplot's value is its share of the total, and the four subplot values sum back to the
+ungrouped estimate exactly), but it is \emph{not} a re-weighted, subplot-local density: the area
+denominator is not currently re-weighted to match each subplot's own area, since that would require
+subplot-level area proportions (from \code{SUBP_COND}) that this function does not use. If you need a
+genuine subplot-local per-acre estimate, this function does not currently provide one.
+
 \strong{Estimation Details}
 
 Estimation of forest variables follows the procedures documented in Bechtold and Patterson (2005) and \href{https://research.fs.usda.gov/treesearch/59521}{Stanke et al 2020}.
@@ -129,7 +141,7 @@ Stanke, H., Finley, A. O., Domke, G. M., Weed, A. S., & MacFarlane, D. W. (2021)
 
 FIA Database User Guide: \url{https://research.fs.usda.gov/understory/forest-inventory-and-analysis-database-user-guide-nfi}
 
-Bechtold, W.A.; Patterson, P.L., eds. 2005. The Enhanced Forest Inventory and Analysis Program - National Sampling Design and Estimation Procedures. Gen. Tech. Rep. SRS - 80. Asheville, NC: U.S. Department of Agriculture, Forest Service, Southern Research Station. 85 p. \url{https://www.srs.fs.usda.gov/pubs/gtr/gtr_srs080/gtr_srs080.pdf}
+Bechtold, W.A.; Patterson, P.L., eds. 2005. The Enhanced Forest Inventory and Analysis Program - National Sampling Design and Estimation Procedures. Gen. Tech. Rep. SRS - 80. Asheville, NC: U.S. Department of Agriculture, Forest Service, Southern Research Station. 85 p. \url{https://research.fs.usda.gov/download/treesearch/20371.pdf}
 
 Stanke, H., Finley, A. O., Weed, A. S., Walters, B. F., & Domke, G. M. (2020). rFIA: An R package for estimation of forest attributes with the US Forest Inventory and Analysis database. Environmental Modelling & Software, 127, 104664.
 }

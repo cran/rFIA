@@ -155,32 +155,33 @@ growMortStarter <- function(x, db, grpBy_quo = NULL, polys = NULL,
     db$TREE_GRM_BEGIN$state <- db$TREE_GRM_BEGIN$VOLCFSND
     db$TREE$state_recr <- db$TREE$VOLCFSND
   } else if (stringr::str_to_upper(stateVar) == 'BIO_AG'){
-    db$TREE_GRM_MIDPT$state <- db$TREE_GRM_MIDPT$DRYBIO_AG
-    db$TREE_GRM_BEGIN$state <- db$TREE_GRM_BEGIN$DRYBIO_AG
-    db$TREE$state_recr <- db$TREE$DRYBIO_AG
+    # 2000 is to convert from pounds to short tons, matching biomass()/carbon()
+    db$TREE_GRM_MIDPT$state <- db$TREE_GRM_MIDPT$DRYBIO_AG / 2000
+    db$TREE_GRM_BEGIN$state <- db$TREE_GRM_BEGIN$DRYBIO_AG / 2000
+    db$TREE$state_recr <- db$TREE$DRYBIO_AG / 2000
   } else if (stringr::str_to_upper(stateVar) == 'BIO_BG'){
-    db$TREE_GRM_MIDPT$state <- db$TREE_GRM_MIDPT$DRYBIO_BG
-    db$TREE_GRM_BEGIN$state <- db$TREE_GRM_BEGIN$DRYBIO_BG
-    db$TREE$state_recr <- db$TREE$DRYBIO_BG
+    db$TREE_GRM_MIDPT$state <- db$TREE_GRM_MIDPT$DRYBIO_BG / 2000
+    db$TREE_GRM_BEGIN$state <- db$TREE_GRM_BEGIN$DRYBIO_BG / 2000
+    db$TREE$state_recr <- db$TREE$DRYBIO_BG / 2000
   } else if (stringr::str_to_upper(stateVar) == 'BIO'){
-    db$TREE_GRM_MIDPT$state <- db$TREE_GRM_MIDPT$DRYBIO_BG + db$TREE_GRM_MIDPT$DRYBIO_AG
-    db$TREE_GRM_BEGIN$state <- db$TREE_GRM_BEGIN$DRYBIO_BG + db$TREE_GRM_BEGIN$DRYBIO_AG
-    db$TREE$state_recr <- db$TREE$DRYBIO_BG + db$TREE$DRYBIO_AG
+    db$TREE_GRM_MIDPT$state <- (db$TREE_GRM_MIDPT$DRYBIO_BG + db$TREE_GRM_MIDPT$DRYBIO_AG) / 2000
+    db$TREE_GRM_BEGIN$state <- (db$TREE_GRM_BEGIN$DRYBIO_BG + db$TREE_GRM_BEGIN$DRYBIO_AG) / 2000
+    db$TREE$state_recr <- (db$TREE$DRYBIO_BG + db$TREE$DRYBIO_AG) / 2000
   } else if (stringr::str_to_upper(stateVar) == 'CARB_AG'){
-    db$TREE_GRM_MIDPT$state <- db$TREE_GRM_MIDPT$DRYBIO_AG * db$TREE_GRM_MIDPT$CARBON_RATIO_LIVE
-    db$TREE_GRM_BEGIN$state <- db$TREE_GRM_BEGIN$DRYBIO_AG * db$TREE_GRM_BEGIN$CARBON_RATIO_LIVE
-    db$TREE$state_recr <- db$TREE$DRYBIO_AG * db$TREE$CARBON_RATIO_LIVE
+    db$TREE_GRM_MIDPT$state <- db$TREE_GRM_MIDPT$DRYBIO_AG * db$TREE_GRM_MIDPT$CARBON_RATIO_LIVE / 2000
+    db$TREE_GRM_BEGIN$state <- db$TREE_GRM_BEGIN$DRYBIO_AG * db$TREE_GRM_BEGIN$CARBON_RATIO_LIVE / 2000
+    db$TREE$state_recr <- db$TREE$DRYBIO_AG * db$TREE$CARBON_RATIO_LIVE / 2000
   } else if (stringr::str_to_upper(stateVar) == 'CARB_BG'){
-    db$TREE_GRM_MIDPT$state <- db$TREE_GRM_MIDPT$DRYBIO_BG * db$TREE_GRM_MIDPT$CARBON_RATIO_LIVE
-    db$TREE_GRM_BEGIN$state <- db$TREE_GRM_BEGIN$DRYBIO_BG * db$TREE_GRM_BEGIN$CARBON_RATIO_LIVE
-    db$TREE$state_recr <- db$TREE$DRYBIO_BG * db$TREE$CARBON_RATIO_LIVE
+    db$TREE_GRM_MIDPT$state <- db$TREE_GRM_MIDPT$DRYBIO_BG * db$TREE_GRM_MIDPT$CARBON_RATIO_LIVE / 2000
+    db$TREE_GRM_BEGIN$state <- db$TREE_GRM_BEGIN$DRYBIO_BG * db$TREE_GRM_BEGIN$CARBON_RATIO_LIVE / 2000
+    db$TREE$state_recr <- db$TREE$DRYBIO_BG * db$TREE$CARBON_RATIO_LIVE / 2000
   } else if (stringr::str_to_upper(stateVar) == 'CARB'){
-    db$TREE_GRM_MIDPT$state <- (db$TREE_GRM_MIDPT$DRYBIO_AG + db$TREE_GRM_MIDPT$DRYBIO_BG) * 
-                               db$TREE_GRM_MIDPT$CARBON_RATIO_LIVE
-    db$TREE_GRM_BEGIN$state <- (db$TREE_GRM_BEGIN$DRYBIO_AG + db$TREE_GRM_BEGIN$DRYBIO_BG) * 
-                               db$TREE_GRM_BEGIN$CARBON_RATIO_LIVE
-    db$TREE$state_recr <- (db$TREE$DRYBIO_AG + db$TREE$DRYBIO_BG) * 
-                          db$TREE$CARBON_RATIO_LIVE
+    db$TREE_GRM_MIDPT$state <- (db$TREE_GRM_MIDPT$DRYBIO_AG + db$TREE_GRM_MIDPT$DRYBIO_BG) *
+                               db$TREE_GRM_MIDPT$CARBON_RATIO_LIVE / 2000
+    db$TREE_GRM_BEGIN$state <- (db$TREE_GRM_BEGIN$DRYBIO_AG + db$TREE_GRM_BEGIN$DRYBIO_BG) *
+                               db$TREE_GRM_BEGIN$CARBON_RATIO_LIVE / 2000
+    db$TREE$state_recr <- (db$TREE$DRYBIO_AG + db$TREE$DRYBIO_BG) *
+                          db$TREE$CARBON_RATIO_LIVE / 2000
   } else {
     stop(paste0('Method not known for stateVar: ', stateVar, '. Please choose one of: TPA, BAA, SAWVOL, SAWVOL_BF, NETVOL, BIO_AG, BIO_BG, BIO, CARB_AG, CARB_BG, or CARB.' ))
   }
@@ -238,11 +239,14 @@ growMortStarter <- function(x, db, grpBy_quo = NULL, polys = NULL,
     # carbon fractions regardless of reporting by species.
     grpBy <- c(grpBy, 'SPCD', 'COMMON_NAME', 'SCIENTIFIC_NAME')
   } 
-  # Break into size classes
+  # Break into size classes. The actual sizeClass column is assigned further
+  # below, once `data` has been joined to TREE_GRM_MIDPT/TREE_GRM_BEGIN --
+  # not here on db$TREE alone. Mortality/removal trees frequently have no
+  # current-cycle (T2) DIA (the tree is dead or gone and couldn't be
+  # measured), which would otherwise drop them from db$TREE before their GRM
+  # contribution is ever computed (issue #40).
   if (bySizeClass) {
     grpBy <- c(grpBy, 'sizeClass')
-    db$TREE$sizeClass <- makeClasses(db$TREE$DIA, interval = 2, numLabs = TRUE)
-    db$TREE <- db$TREE[!is.na(db$TREE$sizeClass), ]
   }
 
   # Prep the tree list ----------------------------------------------------
@@ -382,10 +386,21 @@ growMortStarter <- function(x, db, grpBy_quo = NULL, polys = NULL,
                   TPARECR_UNADJ = TPARECR_UNADJ * state_recr / REMPER,
                   # State recruit is the state variable adjustment for ALL TREES at T2,
                   # So we can estimate live TPA at t2 (t1 unavailable w/out growth accounting) with:
-                  TPA_UNADJ = TPAGROW_UNADJ * state_recr * 
+                  TPA_UNADJ = TPAGROW_UNADJ * state_recr *
                               ifelse(COMPONENT %in% c('SURVIVOR', 'INGROWTH'), 1, 0),
-                  TPA_UNADJ.prev = TPAGROW_UNADJ * state.prev * 
-                                   ifelse(COMPONENT %in% c('SURVIVOR'), 1, 0),
+                  # Previous-period (T1) contribution. Survivors are valued at
+                  # their begin measurement, as before. CUT1/DIVERSION1/
+                  # MORTALITY1 trees (present at T1 but gone by T2) are ALSO
+                  # valued at their begin measurement here, matching
+                  # EVALIDator's growth-accounting SQL (confirmed via
+                  # attribute 202's VBA_SUMFROMWHERE): net growth subtracts
+                  # each such tree's begin value, and (for CUT/DIVERSION only)
+                  # separately adds back its midpoint value via hPlot in tPlot
+                  # below, crediting growth up to the point of removal.
+                  TPA_UNADJ.prev = TPAGROW_UNADJ * state.prev *
+                                   ifelse(COMPONENT %in% c('SURVIVOR', 'CUT1',
+                                                            'DIVERSION1', 'MORTALITY1'),
+                                          1, 0),
                   ) %>%
     # Add our indicator of whether or not a plot is ever associated with a
     # growth accounting inventory
@@ -408,12 +423,36 @@ growMortStarter <- function(x, db, grpBy_quo = NULL, polys = NULL,
                   typeD.prev = dplyr::case_when(is.na(typeD.prev) ~ typeD, TRUE ~ typeD.prev),
                   aD.prev = dplyr::case_when(is.na(aD.prev) ~ aD, TRUE ~ aD.prev),
                   sp.prev = dplyr::case_when(is.na(sp.prev) ~ sp, TRUE ~ sp.prev)) %>%
-    # Comprehensive domain indicators
-    dplyr::mutate(tDI = landD.prev * aD.prev * tD.prev * typeD.prev * sp.prev * tChng,
+    # Comprehensive domain indicators. Note aD (not aD.prev) is used here to
+    # match the area list's own aDI, which restricts the current condition
+    # only -- EVALIDator's strFilter mechanism restricts both the numerator
+    # and denominator using the current condition consistently.
+    dplyr::mutate(tDI = landD.prev * aD * tD.prev * typeD.prev * sp.prev * tChng,
                   tDI_r = landD * aD * tD * typeD * sp * tChng, # All previous attributes NA for recruitment
                   aDI = landD * aD * sp * aChng) %>%
     as.data.frame()
-    
+
+  # Assign size class using whichever diameter is actually available for a
+  # given tree/period: current (T2) DIA for survivors/recruits, falling back
+  # to the midpoint or begin diameter (DIA.mid/DIA.beg, from the joins above)
+  # for mortality/removal trees -- the same diameter sources already used to
+  # compute their state value earlier in this function. Confirmed against OR
+  # GRM data that this coalesce covers every mortality/removal tree with a
+  # missing T2 DIA (issue #40).
+  #
+  # NOTE: rows with an unclassifiable sizeClass are intentionally NOT dropped
+  # from `data` here. `data` also backs the forested-area denominator (`a`/
+  # `aData`) via one row per (PLT_CN, CONDID) for conditions with zero
+  # tally trees; dropping rows from `data` wholesale would silently remove
+  # those zero-tree conditions from the area total too, inflating every
+  # per-acre estimate uniformly. The size-class-NA filter is instead applied
+  # further below, only to the tree list (`t`), after it's confirmed to be an
+  # actual GRM-contributing tree row.
+  if (bySizeClass) {
+    data$sizeClass <- makeClasses(dplyr::coalesce(data$DIA, data$DIA.mid, data$DIA.beg),
+                                  interval = 2, numLabs = TRUE)
+  }
+
   if ('SUBP_COND_CHNG_MTRX' %in% names(db)) {
     # Doing area separately now for growth accounting plots 
     aData <- dplyr::select(db$PLOT, c(PLT_CN, STATECD, MACRO_BREAKPOINT_DIA,
@@ -433,7 +472,8 @@ growMortStarter <- function(x, db, grpBy_quo = NULL, polys = NULL,
       dplyr::mutate(aChng = dplyr::if_else(COND_STATUS_CD == 1 &
                                            COND_STATUS_CD.prev == 1 &
                                            !is.null(CONDPROP_UNADJ) &
-                                           SUBPTYP == 1,
+                                           ((SUBPTYP == 1 & PROP_BASIS == 'SUBP') |
+                                              (SUBPTYP == 3 & PROP_BASIS == 'MACR')),
                                            1, 0),
                     SUBPTYP_PROP_CHNG = SUBPTYP_PROP_CHNG * .25)
 
@@ -486,7 +526,13 @@ growMortStarter <- function(x, db, grpBy_quo = NULL, polys = NULL,
 
     t <- data %>%
       dplyr::mutate(YEAR = MEASYEAR) %>%
-      dplyr::distinct(PLT_CN, TRE_CN, COMPONENT, .keep_all = TRUE) %>%
+      dplyr::distinct(PLT_CN, TRE_CN, COMPONENT, .keep_all = TRUE)
+    if (bySizeClass) {
+      # Drop only from the tree list, not from `data`/`a` -- see the note by
+      # the sizeClass assignment above.
+      t <- t[!is.na(t$sizeClass), ]
+    }
+    t <- t %>%
       dtplyr::lazy_dt() %>%
       # Compute estimates at plot level
       dplyr::group_by(!!!grpSyms, PLT_CN, REMPER) %>%
@@ -495,7 +541,13 @@ growMortStarter <- function(x, db, grpBy_quo = NULL, polys = NULL,
                        REMV_TPA = sum(TPAREMV_UNADJ * tDI, na.rm = TRUE),
                        CURR_TPA = sum(TPA_UNADJ * tDI, na.rm = TRUE),
                        PREV_TPA = sum(TPA_UNADJ.prev * tDI, na.rm = TRUE)) %>%
-      dplyr::mutate(PREV_TPA = PREV_TPA + (MORT_TPA + REMV_TPA)*REMPER) %>%
+      # Add back harvested trees' midpoint value (an annual rate, converted to
+      # a period total), crediting growth up to the point of removal -- see
+      # the matching comment on tPlot/pPlot in the population-estimation
+      # branch above. No corresponding correction for MORT_TPA: mortality
+      # trees get no midpoint credit, only the begin-value subtraction
+      # already folded into PREV_TPA via TPA_UNADJ.prev.
+      dplyr::mutate(CURR_TPA = CURR_TPA + (REMV_TPA * REMPER)) %>%
       dplyr::ungroup() %>%
       dplyr::mutate(CHNG_TPA = (CURR_TPA - PREV_TPA) / REMPER,
                     GROW_TPA = CHNG_TPA - RECR_TPA + MORT_TPA + REMV_TPA,
@@ -548,16 +600,6 @@ growMortStarter <- function(x, db, grpBy_quo = NULL, polys = NULL,
         dplyr::ungroup() %>%
         as.data.frame()
 
-      # TODO: testing
-      # test <- a %>%
-      #   dplyr::left_join(dplyr::select(a_ga, PLT_CN, AREA_BASIS = PROP_BASIS, 
-      #                                  CONDID, !!!aGrpSyms, fa_ga),
-      #                    by = c('PLT_CN', 'AREA_BASIS', 'CONDID', aGrpBy)) %>%
-      #   dplyr::left_join(plt.ga, by = 'PLT_CN') %>%
-      #   dplyr::mutate(fa = case_when(ga == 1 ~ fa_ga,
-      #                                TRUE ~ fa)) %>%
-      #   dplyr::select(PLT_CN, AREA_BASIS, CONDID, !!!aGrpSyms, fa) %>%
-      #   dplyr::filter(fa > 0)
       a <- a %>%
         dplyr::left_join(dplyr::select(a_ga, PLT_CN, AREA_BASIS = PROP_BASIS, 
                                        CONDID, !!!aGrpSyms, fa_ga),
@@ -575,24 +617,40 @@ growMortStarter <- function(x, db, grpBy_quo = NULL, polys = NULL,
       dplyr::distinct(PLT_CN, TRE_CN, .keep_all = TRUE) %>%
       # dtplyr::lazy_dt() %>%
       dplyr::filter(!is.na(SUBPTYP_GRM)) %>%
-      dplyr::filter(tDI > 0 | tDI_r > 0) %>%
-      dplyr::mutate(TPA_UNADJ.prev = ifelse(is.na(TPA_UNADJ.prev) & 
-                                            COMPONENT %in% 'INGROWTH', 0, TPA_UNADJ.prev), 
-                    TPA_UNADJ = ifelse(is.na(TPA_UNADJ) & 
-                                       COMPONENT %in% c('CUT1', 'MORTALITY1', 
-                                                        'CUT2', 'MORTALITY2'), 0, TPA_UNADJ), 
-                    TPARECR_UNADJ = ifelse(is.na(TPARECR_UNADJ), 0, TPARECR_UNADJ)) %>%
-      # Compute estimates at plot level
+      dplyr::filter(tDI > 0 | tDI_r > 0)
+    if (bySizeClass) {
+      # Drop only from the tree list, not from `data`/`a` -- see the note by
+      # the sizeClass assignment above.
+      t <- t[!is.na(t$sizeClass), ]
+    }
+    t <- t %>%
+      # Compute estimates at plot level. Every term is coalesced to 0 (rather
+      # than left as NA) at the row level: a state variable can be undefined
+      # for a given tree/period for reasons unrelated to that row's actual
+      # component (e.g. board-foot volume is only defined above the
+      # sawtimber-size threshold), and without this, one column's NA (dropped
+      # later via sum(..., na.rm = TRUE)) would silently misalign with
+      # another column's non-NA value for the very same row, breaking the
+      # CHNG = GROW + RECR - MORT - REMV identity at the aggregate level even
+      # though each row's own arithmetic is internally consistent.
       dplyr::mutate(# Recruitment
-                    rPlot = TPARECR_UNADJ * tDI_r,
+                    rPlot = dplyr::coalesce(TPARECR_UNADJ * tDI_r, 0),
                     # Mortality
-                    mPlot = TPAMORT_UNADJ * tDI,
+                    mPlot = dplyr::coalesce(TPAMORT_UNADJ * tDI, 0),
                     # Harvested
-                    hPlot = TPAREMV_UNADJ * tDI,
-                    # T2 trees
-                    tPlot = TPA_UNADJ * tDI,
-                    # T1 trees
-                    pPlot = (TPA_UNADJ.prev * tDI) + ((mPlot + hPlot)*REMPER),
+                    hPlot = dplyr::coalesce(TPAREMV_UNADJ * tDI, 0),
+                    # T2 trees. hPlot*REMPER adds back harvested trees' midpoint
+                    # value (converted from an annual rate to a period total),
+                    # crediting their growth up to the point of removal --
+                    # matching EVALIDator's growth-accounting SQL, which values
+                    # CUT/DIVERSION components at their midpoint measurement on
+                    # the "ending" side (see TPA_UNADJ.prev's comment above).
+                    tPlot = dplyr::coalesce(TPA_UNADJ * tDI, 0) + (hPlot * REMPER),
+                    # T1 trees. Survivors and CUT1/DIVERSION1/MORTALITY1 trees
+                    # (present at T1, gone by T2) are valued at their begin
+                    # measurement via TPA_UNADJ.prev; no separate mortality/
+                    # removal correction is needed here.
+                    pPlot = dplyr::coalesce(TPA_UNADJ.prev * tDI, 0),
                     # Change
                     cPlot = (tPlot - pPlot) / REMPER,
                     # Growth
@@ -646,6 +704,48 @@ growMortStarter <- function(x, db, grpBy_quo = NULL, polys = NULL,
                       rPlot_cv_t = rPlot_cv, mPlot_cv_t = mPlot_cv, hPlot_cv_t = hPlot_cv,
                       gPlot_cv_t = gPlot_cv, cPlot_cv_t = cPlot_cv)
       tEst <- dplyr::left_join(tEst, ttEst, by = c('ESTN_UNIT_CN', grpBy))
+
+      # Event-specific plot counts (growMort.Rd documents nPlots_RECR/
+      # nPlots_MORT/nPlots_REMV/nPlots_GROW alongside nPlots_TREE, which
+      # counts plots contributing to *any* event -- RECR/MORT/REMV/
+      # survivor-growth combined). Re-uses sumToEU's existing strata/EU
+      # plot-count machinery (nPlots.x, an unweighted count of distinct
+      # PLT_CN, additive across strata and estimation units) rather than
+      # reimplementing it, applied to a version of tPlt restricted to the
+      # one relevant column and filtered to plots with a non-zero RECR/MORT/
+      # REMV/GROW contribution respectively. tPlt itself never carries YEAR
+      # (dropped by sumToPlot's final summarize); sumToEU adds it back
+      # internally via its join to `pops`, so only the grpBy columns tPlt
+      # actually has are selected here, while the full (YEAR-including)
+      # grpBy is still passed as sumToEU's x.grpBy, matching the pattern
+      # already used for tEst/ttEst above.
+      tPltGrpBy <- grpBy[grpBy != 'YEAR']
+      rEu <- sumToEU(db, dplyr::select(tPlt, ESTN_UNIT_CN, STRATUM_CN, PLT_CN, all_of(tPltGrpBy), rPlot) %>%
+                        dplyr::filter(rPlot != 0),
+                     NULL, pops, grpBy, NULL, method, lambda)
+      mEu <- sumToEU(db, dplyr::select(tPlt, ESTN_UNIT_CN, STRATUM_CN, PLT_CN, all_of(tPltGrpBy), mPlot) %>%
+                        dplyr::filter(mPlot != 0),
+                     NULL, pops, grpBy, NULL, method, lambda)
+      hEu <- sumToEU(db, dplyr::select(tPlt, ESTN_UNIT_CN, STRATUM_CN, PLT_CN, all_of(tPltGrpBy), hPlot) %>%
+                        dplyr::filter(hPlot != 0),
+                     NULL, pops, grpBy, NULL, method, lambda)
+      # gPlot is a differenced quantity (cPlot - rPlot + mPlot + hPlot), so a
+      # plot with no real survivor growth can still land a hair off zero from
+      # floating-point noise -- same reasoning as the GROW_TPA rounding fix
+      # below (abs(.x) < 1e-5 treated as zero), applied here to the filter
+      # instead of after the fact.
+      gEu <- sumToEU(db, dplyr::select(tPlt, ESTN_UNIT_CN, STRATUM_CN, PLT_CN, all_of(tPltGrpBy), gPlot) %>%
+                        dplyr::filter(abs(gPlot) >= 1e-5),
+                     NULL, pops, grpBy, NULL, method, lambda)
+      ePlt <- rEu$x %>%
+        dplyr::select(ESTN_UNIT_CN, all_of(grpBy), nPlots_RECR = nPlots.x) %>%
+        dplyr::full_join(dplyr::select(mEu$x, ESTN_UNIT_CN, all_of(grpBy), nPlots_MORT = nPlots.x),
+                         by = c('ESTN_UNIT_CN', grpBy)) %>%
+        dplyr::full_join(dplyr::select(hEu$x, ESTN_UNIT_CN, all_of(grpBy), nPlots_REMV = nPlots.x),
+                         by = c('ESTN_UNIT_CN', grpBy)) %>%
+        dplyr::full_join(dplyr::select(gEu$x, ESTN_UNIT_CN, all_of(grpBy), nPlots_GROW = nPlots.x),
+                         by = c('ESTN_UNIT_CN', grpBy))
+      tEst <- dplyr::left_join(tEst, ePlt, by = c('ESTN_UNIT_CN', grpBy))
 
       out <- list(tEst = tEst, aEst = aEst, grpBy = grpBy, aGrpBy = aGrpBy)
 
